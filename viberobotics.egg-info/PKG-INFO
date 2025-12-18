@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: viberobotics
+Version: 0.1.0
+Summary: Python package for Vibe Robotics
+Home-page: https://github.com/viberobotics/viberobotics-python
+Author: Vibe Robotics
+Author-email: 
+License: Apache 2.0
+Classifier: Development Status :: 1 - Planning
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3.10
+License-File: LICENSE
+Dynamic: author
+Dynamic: classifier
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: summary

@@ -1,0 +1,6 @@
+LICENSE
+setup.py
+viberobotics.egg-info/PKG-INFO
+viberobotics.egg-info/SOURCES.txt
+viberobotics.egg-info/dependency_links.txt
+viberobotics.egg-info/top_level.txt

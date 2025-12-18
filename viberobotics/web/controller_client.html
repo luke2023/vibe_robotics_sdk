@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Keymap</title>
+</head>
+
+<body style="font-family:sans-serif">
+    <h3>Keyboard capture (keymap)</h3>
+    <p>Click this page, then hold keys. Keep tab focused.</p>
+    <pre id="status"></pre>
+    <script>
+        const status = document.getElementById("status");
+        let local = {};
+
+        function post(state) {
+            fetch("/state", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(state),
+                keepalive: true,
+            }).catch(() => { });
+        }
+
+        function setKey(code, down) {
+            local[code] = down;
+            // Send only the change (patch), not the whole map
+            post({ code, down, t: performance.now() });
+            renderStatus();
+        }
+
+        function renderStatus() {
+            const pressed = Object.entries(local)
+                .filter(([, isDown]) => isDown)
+                .map(([code]) => code)
+                .sort();
+            const pretty = [
+                `Pressed: ${pressed.join(", ") || "none"}`,
+                "",
+                JSON.stringify(local, null, 2),
+            ].join("\n");
+            status.textContent = pretty;
+        }
+
+        window.addEventListener("keydown", (e) => {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+            setKey(e.code, true);
+        });
+
+        window.addEventListener("keyup", (e) => setKey(e.code, false));
+
+        // If the tab loses focus, release all keys (important!)
+        window.addEventListener("blur", () => {
+            for (const k of Object.keys(local)) local[k] = false;
+            // bulk release
+            fetch("/release_all", { method: "POST", keepalive: true }).catch(() => { });
+            renderStatus();
+        });
+    </script>
+</body>
+
+</html>
