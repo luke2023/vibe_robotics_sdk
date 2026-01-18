@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 class PIDController:
     def __init__(self, kp, ki, kd):
@@ -7,6 +8,7 @@ class PIDController:
         self.kd = kd
         self.integral = 0
         self.prev_error = 0
+        self.last_time = time.time()
     
     def update(self, setpoint, measurement, dt=None, derivative=None):
         if type(setpoint) is np.ndarray:
@@ -15,7 +17,7 @@ class PIDController:
         
         assert dt is not None or derivative is not None, "Either dt or derivative must be provided"
         if derivative is not None:
-            dt = 1.0  # Dummy value since derivative is provided
+            dt = time.time() - self.last_time
             if type(derivative) is np.ndarray:
                 derivative = derivative.copy()
         else:
@@ -25,4 +27,5 @@ class PIDController:
         self.prev_error = error
         
         output = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+        self.last_time
         return output

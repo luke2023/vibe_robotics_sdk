@@ -17,6 +17,9 @@
     <h3>Vector</h3>
     <p>Click this page, then tap WASD. Key releases will move the vector.</p>
     <pre id="status"></pre>
+    <h3>Reset</h3>
+    <p>Clicking the button below will reset the vector and mode to default values.</p>
+    <button id="reset-button" onclick="postReset()">Reset</button>
     <script>
         const status = document.getElementById("status");
         const modeDisplay = document.getElementById("mode-display");
@@ -31,6 +34,11 @@
         };
         const vector = { x: 0, y: 0, yaw: 0 };
         let mode = "NONE";
+        const HEARTBEAT_INTERVAL_MS = 300;
+        const MAX_CONSECUTIVE_MISSED_HEARTBEATS = 3;
+        let missedHeartbeats = 0;
+        let heartbeatTimer = null;
+        let closingTab = false;
         const round1 = (v) => Math.round(v * 10) / 10;
 
         async function updateFromResponse(res) {
@@ -45,11 +53,13 @@
                     if (data && data.mode) {
                         mode = data.mode;
                     }
-                } catch {
+                    renderStatus();
+                } catch (e) {
                     // ignore parse errors
+                    console.log(e);
                 }
             }
-            renderStatus();
+            
         }
 
         async function postState(state) {
@@ -72,9 +82,43 @@
             await updateFromResponse(res);
         }
 
+        async function postReset() {
+            const res = await fetch("/reset", {
+                method: "POST",
+                keepalive: true,
+            }).catch(() => null);
+            await updateFromResponse(res);
+        }
+
         function renderStatus() {
             modeDisplay.textContent = mode;
             status.textContent = JSON.stringify(vector, null, 2);
+        }
+
+        async function sendHeartbeat() {
+            if (closingTab) return;
+            const res = await fetch("/heartbeat", {
+                cache: "no-store",
+            }).catch(() => null);
+            if (res && res.ok) {
+                missedHeartbeats = 0;
+            } else {
+                missedHeartbeats += 1;
+            }
+            if (missedHeartbeats >= MAX_CONSECUTIVE_MISSED_HEARTBEATS) {
+                closingTab = true;
+                clearInterval(heartbeatTimer);
+                window.close();
+                setTimeout(() => {
+                    document.body.textContent = "Heartbeat to controller lost. Please close this tab.";
+                }, 200);
+            }
+        }
+
+        function startHeartbeat() {
+            if (heartbeatTimer) return;
+            heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+            sendHeartbeat();
         }
 
         window.addEventListener("keydown", (e) => {
@@ -104,6 +148,7 @@
         }
 
         initStatus();
+        startHeartbeat();
 
     </script>
 </body>

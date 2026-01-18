@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='viberobotics',
@@ -8,14 +8,8 @@ setup(
     author='Vibe Robotics',
     author_email='',
     license='Apache 2.0',
-    packages=['viberobotics'],
+    packages=find_packages(),
+    include_package_data=True,
+    python_requires=">=3.10",
     install_requires=[],
-
-    classifiers=[
-        'Development Status :: 1 - Planning',
-        'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: Apache Software License',  
-        'Operating System :: POSIX :: Linux',        
-        'Programming Language :: Python :: 3.10',
-    ],
 )

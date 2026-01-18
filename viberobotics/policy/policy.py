@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 # Policy -> MuJoCo index
-MJ_TO_POLICY = np.array([
+POLICY_TO_MJ = np.array([
     4, 8, 12, 16, 20,
     3, 7, 11, 15, 19,
     2, 6, 10, 14, 18,
@@ -14,7 +14,7 @@ MJ_TO_POLICY = np.array([
     0
 ])
 
-POLICY_TO_MJ = np.array([
+MJ_TO_POLICY = np.array([
     20,
     15, 10, 5, 0, 16,
     11, 6, 1, 17, 12,
@@ -22,9 +22,23 @@ POLICY_TO_MJ = np.array([
     3, 19, 9, 14, 4
 ])
 
+MJ_TO_POLICY_LEG_ONLY = np.array([
+    1, 3, 5, 7, 9,
+    0, 2, 4, 6, 8
+])
+
+POLICY_TO_MJ_LEG_ONLY = np.array([
+    5, 0, 6, 1, 7,
+    2, 8, 3, 9, 4
+])
+
 def mj_to_policy(x):
+    if len(x) < 21:
+        return np.asarray(x)[..., MJ_TO_POLICY_LEG_ONLY]
     return np.asarray(x)[..., MJ_TO_POLICY]
 def policy_to_mj(x):
+    if len(x) < 21:
+        return np.asarray(x)[..., POLICY_TO_MJ_LEG_ONLY]
     return np.asarray(x)[..., POLICY_TO_MJ]
 
 class Policy:
@@ -71,7 +85,19 @@ class Policy:
         obs_horizon = self.buffer.get().astype(np.float32, copy=False)
         self.actions[:] = self.policy(torch.from_numpy(obs_horizon).unsqueeze(0)).detach().numpy()
         dof_targets = self.default_qpos + self.policy_config.action_scale * self.actions
+        
         # print(np.round(obs_horizon, 3))
         # print(dof_targets, self.policy_config.action_scale, self.actions)
         # input()
         return policy_to_mj(dof_targets)
+
+    def reset(self):
+        self.buffer = Buffer(
+            obs_dim=self.policy_config.num_observations,
+            horizon=self.policy_config.horizon
+        )
+        self.smoothed_command = RateLimitedSmoothing(
+            self.policy_config.policy_interval,
+            default_value=np.zeros(3, dtype=np.float32)
+        )
+        self.actions[:] = 0.0

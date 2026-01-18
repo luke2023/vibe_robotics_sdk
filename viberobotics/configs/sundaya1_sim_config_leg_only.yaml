@@ -1,0 +1,13 @@
+sim:
+  dt: 0.002
+  asset_path: "mujoco/SundayA1_leg_only_2/scene.xml"
+control:
+  kp_torque: 20
+  kd_torque: 0
+policy:
+  model_path: "models/policy_leg_only.pt"
+  num_actions: 10
+default_qpos: [
+  0, 0.7, 0, 0, 0,
+  0, -0.7, 0, 0, 0,
+]

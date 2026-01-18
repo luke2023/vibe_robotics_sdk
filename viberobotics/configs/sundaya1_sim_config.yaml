@@ -2,7 +2,7 @@ sim:
   dt: 0.002
   asset_path: "mujoco/SundayA1_leo/scene.xml"
 control:
-  kp_torque: 20
+  kp_torque: 5
   kd_torque: 1
 policy:
   model_path: "models/policy_leo.pt"

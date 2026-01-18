@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 import numpy as np
 import webbrowser
+from copy import deepcopy
 
 def round1(value: float) -> float:
     return round(value, 1)
@@ -18,6 +19,7 @@ class ControllerWebServer:
             # Store shared state references provided by ControllerWebServer
             self.lock = server.lock
             self.state = server.state
+            self.default_state = server.default_state
             with open(Path(__file__).parent / 'controller_client.html', 'r', encoding='utf-8') as f:
                 self.page = f.read().encode('utf-8')
             # Base class __init__ will start handling the request immediately.
@@ -46,6 +48,9 @@ class ControllerWebServer:
                 with self.lock:
                     body = self._status_json()
                 return self._send(200, body=body, ctype="application/json; charset=utf-8")
+            if urlparse(self.path).path == "/heartbeat":
+                heartbeat = json.dumps({"status": "ok", "time": time.time()}).encode("utf-8")
+                return self._send(200, body=heartbeat, ctype="application/json; charset=utf-8")
             return self._send(404, b"not found")
 
         def do_POST(self):
@@ -100,6 +105,14 @@ class ControllerWebServer:
                     self.state['vector']["yaw"] = 0.0
                 return self._send(200)
 
+            if path == "/reset":
+                with self.lock:
+                    for k, v in self.default_state.items():
+                        self.state[k] = deepcopy(v)
+                    self.state['reset'] = True
+                    body = self._status_json()
+                return self._send(200, body=body, ctype="application/json; charset=utf-8")
+            
             return self._send(404, b"not found")
         
         def log_message(self, format, *args):
@@ -123,14 +136,17 @@ class ControllerWebServer:
         self.lock = threading.Lock()
         self.state = {
             'vector': {"x": 0.0, "y": 0.0, "yaw": 0.0},
-            'mode': self._normalize_mode(initial_mode)
+            'mode': self._normalize_mode(initial_mode),
+            'reset': False
         }
+        self.default_state = deepcopy(self.state)
     
     def start_server(self, host="127.0.0.1", port=3000):
         httpd = ThreadingHTTPServer((host, port), ControllerWebServer.Handler)
         # Expose shared state to the handler via the server instance
         httpd.lock = self.lock
         httpd.state = self.state
+        httpd.default_state = self.default_state
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
         t.start()
         print(f"Controller web server listening on http://{host}:{port}")
@@ -147,6 +163,14 @@ class ControllerWebServer:
     def get_control_mode(self):
         with self.lock:
             return self.state['mode']
+    
+    def resolve_reset(self) -> bool:
+        with self.lock:
+            if self.state['reset']:
+                print(self.state['reset'])
+                self.state['reset'] = False
+                return True
+            return False
     
 if __name__ == "__main__":
     server = ControllerWebServer()

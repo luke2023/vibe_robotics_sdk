@@ -1,0 +1,29 @@
+<mujoco model="scene">
+    <include file="robot.xml" />
+
+    <statistic center="0.15 0.1 0.38" extent=".8" meansize="0.05" />
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0.5 0.5 0.5" />
+        <global azimuth="220" elevation="-10" />
+        <quality shadowsize="8192" />
+    </visual>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.9 0.9 0.9" rgb2="0.9 0.9 0.9" width="512" height="3072" />
+
+        <texture name="groundplane" type="2d" builtin="checker" mark="edge" rgb1="0.9 0.9 0.9" rgb2="0.9 0.9 0.9" markrgb="0.002 0.002 0.002" width="512" height="512" />
+
+        <material name="groundplane" texture="groundplane" texrepeat="3 3" specular="0.9" shininess="0.5" reflectance="0.0" rgba="1 1 1 0.9" />
+    </asset>
+
+    <worldbody>
+        <light name="sun" directional="true" dir="-0.5 -0.4 -1" diffuse="0.9 0.9 0.9" specular="0.99 0.99 0.99" ambient="0.02 0.02 0.02" castshadow="true" />
+
+        <light name="spotlight1" mode="targetbodycom" target="base" diffuse="0.9 0.9 0.9" specular="0.3 0.3 0.3" pos="0 -10 4" cutoff="10" />
+
+        <light name="spotlight2" mode="targetbodycom" directional="true" target="base" diffuse="0.9 0.9 0.9" specular="0.9 0.9 0.9" pos="10 0 4" dir="1 0 0" cutoff="10" castshadow="false" />
+
+        <geom name="floor" size="0 0 0.05" type="plane" contype="1" conaffinity="1" material="groundplane" />
+    </worldbody>
+</mujoco>
