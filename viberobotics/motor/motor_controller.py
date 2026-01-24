@@ -187,7 +187,8 @@ class MotorController:
 
         scs_comm_result = self.packetHandler.groupSyncWrite_TorqueOffCalPos.txPacket()
         if scs_comm_result != COMM_SUCCESS:
-           raise SyncWriteFailedException()
+            print(scs_comm_result)
+            raise SyncWriteFailedException()
 
         self.packetHandler.groupSyncWrite_TorqueOffCalPos.clearParam()
     

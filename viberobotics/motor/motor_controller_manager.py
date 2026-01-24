@@ -130,7 +130,6 @@ class MotorControllerManager:
     def set_positions(self, q_pos, q_vel, q_acc):
         assert self.mode == 0, "Can only set positions in Position Mode"
         q_pos_step = rad2step(q_pos * self.sign_change)
-        print(q_pos_step)
         
         if not isinstance(q_vel, np.ndarray):
             q_vel = q_vel * np.ones_like(q_pos_step)

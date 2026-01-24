@@ -1,6 +1,7 @@
-from viberobotics.sensor.d435i import RealsenseD435i
+# from viberobotics.sensor.d435i import RealsenseD435i
 from viberobotics.configs.config import load_config
 from viberobotics.motor.motor_controller_manager import MotorControllerManager
+from viberobotics.constants import ASSET_DIR
 
 import pinocchio as pin
 import viser
@@ -30,7 +31,6 @@ def mj_to_urdf(q):
                        16, 15, 14, 13, 12,
                        22, 21, 20, 19, 18, 17,]]
 
-def make_collision_model(points)
 
 EE_OFFSET = [-0.01692857, -0.01473608, -0.04638411]
 
@@ -41,34 +41,37 @@ if __name__ == '__main__':
     # print(motor_manager.motor_order)
     # motor_manager.set_positions(np.zeros(23,), 0, 5)
     
-    cam = RealsenseD435i()
+    # cam = RealsenseD435i()
+    
     server = viser.ViserServer()
     viser_urdf = ViserUrdf(
         server,
-        urdf_or_path=Path('/home/danielchen09/dc/vibe/viberobotics-python/viberobotics/assets/urdf/SundayA1_full_2dof/robot.urdf'),
+        urdf_or_path=ASSET_DIR / 'urdf/SundayA1_full_2dof/robot.urdf',
         load_meshes=True,
-        load_collision_meshes=False,
+        load_collision_meshes=True,
         root_node_name="/sunday_a1"
     )
     default_qpos = np.zeros(23,)
     viser_urdf.update_cfg(np.zeros(23,))
     
-    print('mujoco joint order:')
-    model = mujoco.MjModel.from_xml_path('/home/danielchen09/dc/vibe/viberobotics-python/viberobotics/assets/mujoco/SundayA1_full_2dof/scene.xml')
-    for i in range(model.njnt):
-        joint_name = model.joint(i).name
-        print(f"Joint {i}: {joint_name}")
-    print('urdf joint order:')
-    for i, name in enumerate(viser_urdf.get_actuated_joint_names()):
-        print(f"Joint {i}: {name}")
+    # print('mujoco joint order:')
+    # model = mujoco.MjModel.from_xml_path('/home/danielchen09/dc/vibe/viberobotics-python/viberobotics/assets/mujoco/SundayA1_full_2dof/scene.xml')
+    # for i in range(model.njnt):
+    #     joint_name = model.joint(i).name
+    #     print(f"Joint {i}: {joint_name}")
+    # print('urdf joint order:')
+    # for i, name in enumerate(viser_urdf.get_actuated_joint_names()):
+    #     print(f"Joint {i}: {name}")
     
     robot = pin.RobotWrapper.BuildFromMJCF(
-        filename="/home/danielchen09/dc/vibe/viberobotics-python/viberobotics/assets/mujoco/SundayA1_full_2dof/robot.xml",
+        filename=(ASSET_DIR / "mujoco/SundayA1_full_2dof/robot.xml").as_posix(),
         root_joint=None,
     )
     configuration = pink.Configuration(robot.model, robot.data, default_qpos)
     pin.forwardKinematics(robot.model, robot.data, default_qpos)
     pin.updateFramePlacements(robot.model, robot.data)
+    
+    
     right_hand_id = robot.model.getFrameId("thumb_0112")
     right_hand_pos = robot.data.oMf[right_hand_id].translation.copy()
     right_hand_rot = R.from_matrix(robot.data.oMf[right_hand_id].rotation)
@@ -103,6 +106,11 @@ if __name__ == '__main__':
     @right_hand_control.on_drag_end
     def _(_):
         print("Offset: ", right_hand_control.position - right_hand_pos)
+    
+    print_cfg_button = server.gui.add_button("Print Current Qpos")
+    @print_cfg_button.on_click
+    def _(_):
+        print("Current Qpos:", configuration.q)
     
     gripper_slider = server.gui.add_slider(
         "gripper slider",
