@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation as R
 from loop_rate_limiters import RateLimiter
 import argparse
 import time
+import mujoco
 
 import qpsolvers
 import pink
@@ -18,33 +19,29 @@ from pink.tasks import ComTask, FrameTask, PostureTask
 from pink.visualization import start_meshcat_visualizer
 
 def urdf_to_mj(q):
-    return (np.array(q)[
-        [4, 3, 2, 1, 0,
-        9, 8, 7, 6, 5,]
-    ] + np.array([
-        0, 0.7, 0, 0, 0,
-        0, -0.7, 0, 0, 0,
-    ]))
-
-def mj_to_urdf(q):
-    return (np.array(q) - np.array([
-        0, 0.7, 0, 0, 0,
-        0, -0.7, 0, 0, 0,
-    ]))[
-        [4, 3, 2, 1, 0,
-        9, 8, 7, 6, 5,]
+    return np.array(q)[
+        [5, 4, 3, 2, 1, 0,
+        11, 10, 9, 8, 7, 6,]
     ]
 
-RIGHT_FOOT_OFFSET = [ 0.08673298, 0.01949158, -0.07612692]
-LEFT_FOOT_OFFSET = [ -0.08673298, 0.01949158, -0.07612692]
-FOOT1_NAME = "foot1016"
-FOOT2_NAME = "foot1016_2"
+def mj_to_urdf(q):
+    return np.array(q)[
+        [5, 4, 3, 2, 1, 0,
+        11, 10, 9, 8, 7, 6,]
+    ]
+
+LEFT_FOOT_OFFSET = [ 0.0035892,   0.07621154, -0.03390307]
+RIGHT_FOOT_OFFSET = [-0.01041991,  0.07636895, -0.03086924]
+LEFT_FOOT_OFFSET = [0, 0, 0]
+RIGHT_FOOT_OFFSET = [0, 0, 0]
+FOOT1_NAME = "sole0120mir"
+FOOT2_NAME = "sole0120"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--real', action='store_true', help='Use real robot')
     parser.add_argument('--disable_ik', action='store_true', help='Use real robot')
-    parser.add_argument('--config', type=str, default='viberobotics/configs/sundaya1_real_config_leg_only.yaml', help='Config file path')
+    parser.add_argument('--config', type=str, default='sundaya1_real_config_half_2dof.yaml', help='Config file path')
     args = parser.parse_args()
     
     server = viser.ViserServer()
@@ -52,7 +49,7 @@ if __name__ == "__main__":
     cfg = load_config(args.config)
     
     if args.real:
-        motor_manager = MotorControllerManager(cfg.real_config.motor_controllers, mode=0)
+        motor_manager = MotorControllerManager(cfg.real_config.n_motors, cfg.real_config.motor_controllers, cfg.real_config.calibration_file, mode=0)
         motor_manager.set_positions(cfg.default_qpos, 0, 5)
     
     robot = pin.RobotWrapper.BuildFromMJCF(
@@ -101,7 +98,7 @@ if __name__ == "__main__":
     
     
     robot_base = server.scene.add_frame("/sunday_a1", show_axes=False)
-    robot_base.position = (0, 0, 0.207)
+    robot_base.position = (0, 0, 0.3)
     viser_urdf = ViserUrdf(
         server,
         urdf_or_path=Path(cfg.sim_config.urdf_path),
@@ -109,7 +106,17 @@ if __name__ == "__main__":
         load_collision_meshes=False,
         root_node_name="/sunday_a1"
     )
+    print('mujoco joint order:')
+    model = mujoco.MjModel.from_xml_path(cfg.sim_config.asset_path)
+    for i in range(model.njnt):
+        joint_name = model.joint(i).name
+        print(f"Joint {i}: {joint_name}")
+    print('urdf joint order:')
+    for i, name in enumerate(viser_urdf.get_actuated_joint_names()):
+        print(f"Joint {i}: {name}")
+        
     viser_urdf.update_cfg(mj_to_urdf(default_q[7:]))
+    
     
     server.scene.add_grid(
         "/grid",
@@ -124,7 +131,7 @@ if __name__ == "__main__":
     
     right_foot_control = server.scene.add_transform_controls(
         f"/right_foot_control",
-        depth_test=False,
+        depth_test=True,
         scale=0.1,
         disable_axes=False,
         disable_sliders=True,
@@ -141,7 +148,7 @@ if __name__ == "__main__":
     
     left_foot_control = server.scene.add_transform_controls(
         f"/left_foot_control",
-        depth_test=False,
+        depth_test=True,
         scale=0.1,
         disable_axes=False,
         disable_sliders=True,
@@ -158,7 +165,7 @@ if __name__ == "__main__":
     
     base_control = server.scene.add_transform_controls(
         f"/base_control",
-        depth_test=False,
+        depth_test=True,
         scale=0.2,
         disable_axes=False,
         disable_sliders=True,
@@ -181,7 +188,7 @@ if __name__ == "__main__":
         configuration = pink.Configuration(robot.model, robot.data, default_q)
         left_foot_control.position = left_foot_pos + LEFT_FOOT_OFFSET
         right_foot_control.position = right_foot_pos + RIGHT_FOOT_OFFSET
-        base_control.position = (0, 0, 0.207)
+        base_control.position = (0, 0, 0.3)
         tasks[0].transform_target_to_world.translation = right_foot_pos
         tasks[1].transform_target_to_world.translation = left_foot_pos
         tasks[2].transform_target_to_world.translation = base_control.position
@@ -200,9 +207,9 @@ if __name__ == "__main__":
     dt = rate.period
     start_time = time.time()
     
-    stride = 0.01
+    stride = 0.02
     height = 0.03
-    freq = 6.5  # Hz
+    freq = 3.5  # Hz
     
     while True:
         t = time.time() - start_time
@@ -214,9 +221,9 @@ if __name__ == "__main__":
         z = height * np.sin(-freq * t + np.pi)
         right_target.position = right_foot_pos + RIGHT_FOOT_OFFSET + np.array([-0., y, max(z, 0)])
         
-        x = 0.05 * np.sin(freq * t + np.pi / 2)
+        x = 0.02 * np.sin(freq * t + np.pi / 2)
         y = 0.05 * np.cos(freq * t)
-        body_target.position = np.array([x, 0.02, 0.207])
+        body_target.position = np.array([x, 0.02, 0.28])
         
         
         tasks[0].transform_target_to_world.translation = right_target.position - RIGHT_FOOT_OFFSET
@@ -237,6 +244,6 @@ if __name__ == "__main__":
             motor_manager.set_positions(q[7:], 0, 5)
         if not args.disable_ik:
             viser_urdf.update_cfg(mj_to_urdf(q[7:]).copy())
-            robot_base.position = q[:3] + np.array([0, 0, 0.207])
+            robot_base.position = q[:3] + np.array([0, 0, 0.3])
             robot_base.wxyz = (q[6], q[3], q[4], q[5])
         rate.sleep()

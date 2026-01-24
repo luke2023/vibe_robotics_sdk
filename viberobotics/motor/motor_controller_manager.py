@@ -6,13 +6,7 @@ from viberobotics.constants import CALIBRATION_FILE
 
 import numpy as np
 from typing import List
-
-
-SIGN_CHANGE_MOTORS = np.array([1,
-                               1, 1, 1, 1, -1, 
-                               1, -1, -1, -1, 1, 1,
-                               -1, 1, 1, 1, 1,
-                               1, -1, -1, 1, 1, 1])
+from pathlib import Path
 
 class MotorControllerManager:
     def __init__(self, n_motors, motor_mapping: list[MotorControllerConfig], calibration_file=None, mode=0):
@@ -43,6 +37,11 @@ class MotorControllerManager:
         
         
         self.calibration = None
+        self.calibration_file = calibration_file
+        if not Path(calibration_file).exists():
+            print('Calibration file does not exist, starting calibration')
+            self.calibrate()
+            
         if calibration_file is None:
             calibration_file = CALIBRATION_FILE
         with open(calibration_file, "r", encoding="utf-8") as f:
@@ -149,4 +148,4 @@ class MotorControllerManager:
         input("Put the robot in the zero position and press Enter to continue...")
         q, _ = self.get_raw_state()
         
-        np.savetxt(CALIBRATION_FILE, q, delimiter=",", fmt="%d")
+        np.savetxt(self.calibration_file, q, delimiter=",", fmt="%d")

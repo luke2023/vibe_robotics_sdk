@@ -7,5 +7,5 @@ parser.add_argument('--config', type=str, default="sundaya1_real_config_leg_only
 args = parser.parse_args()
 
 config = load_config(args.config)
-motor_manager = MotorControllerManager(config.real_config.motor_controllers, mode=0)
+motor_manager = MotorControllerManager(config.real_config.n_motors, config.real_config.motor_controllers, config.real_config.calibration_file, mode=0)
 motor_manager.disable_torque()

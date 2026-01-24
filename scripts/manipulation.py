@@ -30,14 +30,16 @@ def mj_to_urdf(q):
                        16, 15, 14, 13, 12,
                        22, 21, 20, 19, 18, 17,]]
 
+def make_collision_model(points)
+
 EE_OFFSET = [-0.01692857, -0.01473608, -0.04638411]
 
 if __name__ == '__main__':
     
-    cfg = load_config('sundaya1_real_config_arm_only.yaml')
-    motor_manager = MotorControllerManager(23, cfg.real_config.motor_controllers, mode=0)
-    print(motor_manager.motor_order)
-    motor_manager.set_positions(np.zeros(23,), 0, 5)
+    # cfg = load_config('sundaya1_real_config_arm_only.yaml')
+    # motor_manager = MotorControllerManager(23, cfg.real_config.motor_controllers, mode=0)
+    # print(motor_manager.motor_order)
+    # motor_manager.set_positions(np.zeros(23,), 0, 5)
     
     cam = RealsenseD435i()
     server = viser.ViserServer()
@@ -135,6 +137,16 @@ if __name__ == '__main__':
                                       [0, 0, 1]])
     
     
+    # take_picture_button = server.gui.add_button("Take Picture")
+    # @take_picture_button.on_click
+    # def _(_):
+    #     pc_xyz_internal, pc_color = cam.get_pointcloud()
+    #     pc_xyz = cam_global_rot.apply(cam_internal_rot.apply(pc_xyz_internal)) + cam_global_pos
+    #     np.save("pc_xyz.npy", pc_xyz)
+    #     np.save("pc_color.npy", pc_color)
+    #     print("Point cloud saved.")
+    
+    pc_xyz, pc_color = np.load("pc_xyz.npy"), np.load("pc_color.npy")
     
     dt = 1 / 200
     rate = RateLimiter(frequency=200.0, warn=False)
@@ -154,10 +166,10 @@ if __name__ == '__main__':
         q[5] = gripper_slider.value
         viser_urdf.update_cfg(mj_to_urdf(q).copy()) 
         
-        motor_manager.set_positions(q, 0, 5)
+        # motor_manager.set_positions(q, 0, 5)
         
-        pc_xyz_internal, pc_color = cam.get_pointcloud()
-        pc_xyz = cam_global_rot.apply(cam_internal_rot.apply(pc_xyz_internal)) + cam_global_pos
+        # pc_xyz_internal, pc_color = cam.get_pointcloud()
+        # pc_xyz = cam_global_rot.apply(cam_internal_rot.apply(pc_xyz_internal)) + cam_global_pos
         server.scene.add_point_cloud(
             "/pointcloud",
             points=pc_xyz,

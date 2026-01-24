@@ -1,9 +1,10 @@
-from viberobotics.constants import ASSET_DIR, CONFIG_DIR
+from viberobotics.constants import ASSET_DIR, CONFIG_DIR, ROOT_DIR
 
 from dataclasses import dataclass
 import numpy as np
 from typing import Union, List
 import yaml
+from pathlib import Path
 
 @dataclass
 class SundayA1SimConfig:
@@ -28,7 +29,8 @@ class MotorControllerConfig:
 class SundayA1RealConfig:
     imu_port: SerialConfig
     motor_controllers: List[MotorControllerConfig] = None
-    motor_order: dict[int, int] = None # motor_orders[real id] = sim index
+    n_motors: int = 21
+    calibration_file: str = "configs/zero_position.csv"
     
 @dataclass
 class SundayA1ControlConfig:
@@ -69,7 +71,8 @@ def load_config(config_path, from_config_dir=True):
         motor_controllers=[
             MotorControllerConfig(**{**motor, 'serial_config': SerialConfig(**motor.get('serial_config', {}))}) for motor in cfg_dict.get('real', {}).get('motor_controllers', [])
         ],
-        motor_order=cfg_dict.get('real', {}).get('motor_order', {})
+        n_motors=cfg_dict.get('real', {}).get('n_motors', 21),
+        calibration_file=ROOT_DIR / Path(cfg_dict.get('real', {}).get('calibration_file', "configs/zero_position.csv"))
     )
     control_cfg = SundayA1ControlConfig(**cfg_dict.get('control', {}))
     policy_cfg = SundayA1PolicyConfig(**cfg_dict.get('policy', {}))
@@ -83,6 +86,7 @@ def load_config(config_path, from_config_dir=True):
         policy_config=policy_cfg
     )
     config.sim_config.asset_path = (ASSET_DIR / cfg_dict['sim']['asset_path']).as_posix()
+    config.sim_config.urdf_path = (ASSET_DIR / cfg_dict['sim']['urdf_path']).as_posix()
     config.policy_config.model_path = (ASSET_DIR / cfg_dict['policy']['model_path']).as_posix()
     return config
     

@@ -5,40 +5,23 @@ real:
   imu_port:
     port: "/dev/ttyACM2"
     baudrate: 9600
+  n_motors: 21
   motor_controllers:
     - name: "arm"
       motor_ids: [1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 21]
+      sim_idxs: [1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 0]
+      sign_change: [1, 1, 1, 1, -1, -1, 1, 1, 1, 1, 1]
       serial_config:
         port: "/dev/ttyACM1"
         baudrate: 1000000
     - name: "leg"
       motor_ids: [6, 7, 8, 9, 10, 16, 17, 18, 19, 20]
+      sim_idxs: [6, 7, 8, 9, 10, 16, 17, 18, 19, 20]
+      sign_change: [1, -1, -1, -1, 1, 1, -1, -1, 1, 1]
       serial_config:
         port: "/dev/ttyACM0"
         baudrate: 1000000
   calibration_file: "configs/zero_position.csv"
-  motor_order:
-    1: 1
-    2: 2
-    3: 3
-    4: 4
-    5: 5
-    6: 6
-    7: 7
-    8: 8
-    9: 9
-    10: 10
-    11: 11
-    12: 12
-    13: 13
-    14: 14
-    15: 15
-    16: 16
-    17: 17
-    18: 18
-    19: 19
-    20: 20
-    21: 0
 control:
   kp_torque: 20
   kd_torque: 1
@@ -49,5 +32,5 @@ default_qpos: [
   0, 0, 0, 0, 0,
   0, 0., 0, 0, 0,
   0, 0, 0, 0, 0,
-  0, -0., 0, 0, 0,
+  0, 0., 0, 0, 0,
 ]

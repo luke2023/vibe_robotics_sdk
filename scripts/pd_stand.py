@@ -21,7 +21,10 @@ if mode == 2:
     kp = 500
     kd = 50
 
-    motor_manager = MotorControllerManager(config.real_config.motor_controllers, config.real_config.motor_order, calibration_file=CALIBRATION_FILE, mode=2)
+    motor_manager = MotorControllerManager(config.real_config.n_motors,
+                                           config.real_config.motor_controllers, 
+                                           calibration_file=config.real_config.calibration_file, 
+                                           mode=2)
     default_qpos = config.default_qpos
     controller = PIDController(kp, 0, kd)
     print(default_qpos)
@@ -40,7 +43,7 @@ elif mode == 0:
     kp = 32
     kd = 32
     cfg = config.real_config.motor_controllers
-    motor_manager = MotorControllerManager(cfg, calibration_file=CALIBRATION_FILE, mode=0)
+    motor_manager = MotorControllerManager(config.real_config.n_motors, cfg, calibration_file=CALIBRATION_FILE, mode=0)
     motor_manager.set_kp_kd(kp, kd)
     default_qpos = config.default_qpos
     motor_manager.set_positions(default_qpos, 0, 20)

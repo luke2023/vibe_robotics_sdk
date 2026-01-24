@@ -1,0 +1,27 @@
+sim:
+  dt: 0.002
+  asset_path: "mujoco/SundayA1_ankle_2dof_new/scene.xml"
+  urdf_path: "urdf/SundayA1_ankle_2dof_new/robot.urdf"
+real:
+  imu_port:
+    port: "/dev/ttyACM2"
+    baudrate: 9600
+  n_motors: 12
+  motor_controllers:
+    - name: "leg"
+      motor_ids: [6, 7, 8, 9, 10, 22, 16, 17, 18, 19, 20, 23]
+      sim_idxs: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+      sign_change: [1, -1, -1, -1, 1, 1, 1, -1, -1, 1, 1, 1]
+      serial_config:
+        port: "/dev/ttyACM0"
+        baudrate: 1000000
+  calibration_file: "configs/zero_position_half_2dof.csv"
+control:
+  kp_torque: 20
+  kd_torque: 1
+policy:
+  model_path: "models/policy_leo.pt"
+default_qpos: [
+  0, 0, 0, 0, 0, 0,
+  0, 0., 0, 0, 0, 0,
+]

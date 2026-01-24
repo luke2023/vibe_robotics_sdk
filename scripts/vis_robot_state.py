@@ -12,7 +12,10 @@ parser.add_argument('--mode', type=int, default=2, help='Mode: 0 for position co
 args = parser.parse_args()
 
 cfg = load_config(args.config)
-motor_manager = MotorControllerManager(cfg.real_config.motor_controllers, cfg.real_config.motor_order, mode=args.mode)
+motor_manager = MotorControllerManager(cfg.real_config.n_motors, 
+                                       cfg.real_config.motor_controllers, 
+                                       calibration_file=cfg.real_config.calibration_file,
+                                       mode=args.mode)
 model = mujoco.MjModel.from_xml_path(cfg.sim_config.asset_path)
 data = mujoco.MjData(model)
 
