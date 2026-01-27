@@ -18,8 +18,9 @@
     <mesh maxhullvert="64" />
   </default>
   <worldbody>
+    <site name="my_point" type="sphere" size="0.01" rgba="1 0 0 1" pos="6.19956156e-05 4.82231401e-02 1.55300567e-01"/>
     <!-- Link body -->
-    <body name="base" pos="0 0 0.3" quat="1 0 0 0" childclass="SundayA1_Mujoco">
+    <body name="base" pos="0 0 0.2125" quat="1 0 0 0" childclass="SundayA1_Mujoco">
       <freejoint name="floating_base"/>
       <site name="imu_site" pos="0 0 0" quat="1 0 0 0" size=".01"/>
       <inertial pos="2.7095e-05 0.0575604 0.0537062" mass="0.460845" fullinertia="0.000633814 0.000946769 0.000831012 2.40779e-08 6.97121e-07 2.0973e-05"/>

@@ -1,85 +1,83 @@
-from dataclasses import dataclass
+from enum import Enum
 import numpy as np
-from typing import List, Tuple, Literal, Optional
+from dataclasses import dataclass
+
+class WalkState(Enum):
+    STAND = 0
+    DSP = 1
+    SSP = 2
+
 
 @dataclass
 class Footstep:
-    """
-    Represents a single planned footstep in world frame.
-
-    All coordinates in world frame:
-      - forward = +Y
-      - right   = +X
-      - up      = +Z
-    """
-    foot: Literal["left", "right"]
-    pos: np.ndarray      # shape (3,) [x, y, z]
-    quat: np.ndarray     # shape (4,) [w, x, y, z]
-    t_touchdown: float   # time when this foot becomes stance (start of SS)
-    t_liftoff: Optional[float] = None     # OPTIONAL: time when this foot leaves ground, if usef
+    x: float
+    y: float
     
+    @property
+    def position(self) -> np.ndarray:
+        return np.array([self.x, self.y, 0.])
 
 @dataclass
-class ZMPReference:
-    """
-    ZMP reference trajectory in time.
-
-    px_ref, py_ref are *world-frame* coordinates of the desired ZMP.
-    phase_type is a list of strings describing the support phase for each time.
-    """
-    t: np.ndarray                    # shape (N,)
-    px_ref: np.ndarray               # shape (N,)
-    py_ref: np.ndarray               # shape (N,)
-    phase_type: List[Literal["double", "single_left", "single_right"]]
+class RobotConfig:
+    xml_path: str
+    left_foot_name: str
+    right_foot_name: str
+    foot_size: np.ndarray
 
 @dataclass
-class LIPMModel:
-    """
-    Discrete LIPM with jerk input for one axis (x or y).
-    State: X = [pos; vel; acc]
-    Input: u = jerk
-    ZMP: p = C X
-    """
-    A: np.ndarray
-    B: np.ndarray
-    C: np.ndarray
-    dt: float
-    z_c: float
+class WalkConfig:
+    ssp_duration: float
+    dsp_duration: float
+    step_length: float
     
 @dataclass
-class PreviewGains:
-    Gi: float          # integral gain
-    Gx: np.ndarray     # state feedback gain (1x3)
-    Gp: np.ndarray     # preview gains (1 x NL)
-    N_L: int           # horizon length
+class RobotParams:
+    com: np.ndarray
+    foot_spred: float
+    foot_size: np.ndarray
+    left_foot_offset: np.ndarray
+    right_foot_offset: np.ndarray
+    foot_y: float = 0.0
 
 @dataclass
-class CoMTrajectory:
-    t: np.ndarray   # (N,)
-    x: np.ndarray   # (N,) CoM right
-    y: np.ndarray   # (N,) CoM forward
-    z: np.ndarray   # (N,) CoM up (constant = z_c here)
-    px: np.ndarray  # (N,) resulting ZMP x from LIPM
-    py: np.ndarray  # (N,) resulting ZMP y from LIPM
+class IKTarget:
+    left_foot_pos: np.ndarray
+    right_foot_pos: np.ndarray
+    com_pos: np.ndarray
     
-@dataclass
-class FootTrajectory:
-    t: np.ndarray      # (N,)
-    pos: np.ndarray    # (N, 3)
-    quat: np.ndarray   # (N, 4)
-    
-@dataclass
-class GaitParams:
-    z_c: float                 # CoM height used in LIPM
-    step_width: float          # lateral distance between feet
-    foot_length: float         # approx. length (forward)
-    foot_width: float          # approx. width (lateral)
-    omega: float               # LIPM natural frequency sqrt(g / z_c)
-    nominal_step_time: float   # suggested t_step
-    ds_time: float             # suggested double-support time
-    ss_time: float             # suggested single-support time
-    
-@dataclass
-class WholeBodyTrajectory:
-    t: np.ndarray          # (N,)
-    q: np.ndarray          # (N, nq) desired joint configs over time
+
+class FootType(Enum):
+    LEFT = 0
+    RIGHT = 1
+
+class Foot:
+    def __init__(self, position: np.ndarray, size: np.ndarray):
+        self.position = position
+        self.size = size / 2
+        
+    def get_scaled_contact_area(self, scale):
+        X = scale * self.size[0]
+        Y = scale * self.size[1]
+        v1 = np.array([X, Y, 0.]) + self.position
+        v2 = np.array([-X, Y, 0.]) + self.position
+        v3 = np.array([-X, -Y, 0.]) + self.position
+        v4 = np.array([X, -Y, 0.]) + self.position
+        return np.array([v1, v2, v3, v4])
+
+class PointMass:
+    def __init__(self, position: np.ndarray):
+        self.position = position
+        self.velocity = np.zeros(3)
+        self.acceleration = np.zeros(3)
+        
+    def integrate_constant_jerk(self, pddd, dt):
+        self.position = self.position + dt * (
+            self.velocity + .5 * dt * (self.acceleration + dt * pddd / 3.))
+        self.velocity = self.velocity + dt * (self.acceleration + dt * pddd / 2.)
+        self.acceleration = self.acceleration + dt * pddd
+
+class Stance:
+    def __init__(self, left_foot, right_foot, com):
+        self.left_foot = left_foot
+        self.right_foot = right_foot
+        self.com = com
