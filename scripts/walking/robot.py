@@ -484,7 +484,7 @@ class Robot:
                     viewer.sync()
     def deploy_remote(self, host, is_sender):
         from remote import NumpySocket
-        cfg = load_config('sundaya1_real_config.yaml')
+        cfg = load_config('sundaya1_real_config_half_2dof.yaml')
         if not is_sender:
             remote = NumpySocket(host="0.0.0.0", port=9000, is_sender=False)
             motor_manager = MotorControllerManager(
