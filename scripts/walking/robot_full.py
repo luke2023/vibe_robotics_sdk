@@ -611,7 +611,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default='view', choices=['view', 'simulate', 'deploy'], help='Mode: view, simulate, deploy')
+    parser.add_argument('--mode', type=str, default='view', choices=['view', 'simulate', 'deploy', 'remote'], help='Mode: view, simulate, deploy')
     parser.add_argument('--sender', action='store_true', help='Deploy via remote sender')
     parser.add_argument('--host', type=str, default='', help='Remote host')
     args = parser.parse_args()
