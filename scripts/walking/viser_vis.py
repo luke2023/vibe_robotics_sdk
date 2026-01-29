@@ -8,7 +8,7 @@ class ViserVisualizer:
     def __init__(self, urdf_path: str):
         self.server = viser.ViserServer()
         self.robot_base = self.server.scene.add_frame("/robot_base", show_axes=False)
-        self.robot_base.position = (0, 0, 0.2125)
+        self.robot_base.position = (0, 0, 0.2615)
         self.viser_urdf = ViserUrdf(
             self.server,
             urdf_or_path=Path(urdf_path),
@@ -17,10 +17,10 @@ class ViserVisualizer:
             root_node_name="/robot_base"
         )
         print('mujoco joint order:')
-        model = mujoco.MjModel.from_xml_path('/home/dcjs/dc/vibe/viberobotics-python/viberobotics/assets/mujoco/SundayA1_full_2dof_arm_loco/scene.xml')
+        model = mujoco.MjModel.from_xml_path('/home/danielchen09/dc/vibe/viberobotics-python/viberobotics/assets/mujoco/SundayA1_full_2dof_b/scene.xml')
         for i in range(model.njnt):
             joint_name = model.joint(i).name
-            print(f"Joint {i}: {joint_name}")
+            print(f"Joint {i - 1}: {joint_name}")
         print('urdf joint order:')
         for i, name in enumerate(self.viser_urdf.get_actuated_joint_names()):
             print(f"Joint {i}: {name}")
@@ -42,7 +42,7 @@ class ViserVisualizer:
         self.viser_urdf.update_cfg(self._mj_to_urdf(q[7:]))
         positions = q[0:3]
         orientation = q[3:7]
-        self.robot_base.position = positions + np.array([0.0, 0.0, 0.2125])
+        self.robot_base.position = positions + np.array([0.0, 0.0, 0.2615])
         self.robot_base.wxyz = orientation[[3, 0, 1, 2]]
     
     def add_box(self, name: str, size: np.ndarray, position: np.ndarray, color: np.ndarray):
@@ -53,19 +53,12 @@ class ViserVisualizer:
             color=color,
         )
         
-    # def _urdf_to_mj(self, q):
-    #     return np.array(q)[
-    #         [5, 4, 3, 2, 1, 0,
-    #         11, 10, 9, 8, 7, 6,]
-    #     ]
-    
-    # def _mj_to_urdf(self, q):
-    #     return np.array(q)[
-    #         [5, 4, 3, 2, 1, 0,
-    #         11, 10, 9, 8, 7, 6,]
-    #     ]
-        
     def _urdf_to_mj(self, q):
+        if len(q) < 23:
+            return np.array(q)[
+                [5, 4, 3, 2, 1, 0,
+                11, 10, 9, 8, 7, 6,]
+            ]
         return np.array(q)[
             [0, 5, 4, 3, 2, 1,
             11, 10, 9, 8, 7, 6,
@@ -74,6 +67,11 @@ class ViserVisualizer:
         ]
     
     def _mj_to_urdf(self, q):
+        if len(q) < 23:
+            return np.array(q)[
+                [0, 5, 4, 3, 2, 1,
+                11, 10, 9, 8, 7, 6,]
+            ]
         return np.array(q)[
             [0, 5, 4, 3, 2, 1,
             11, 10, 9, 8, 7, 6,

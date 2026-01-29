@@ -1,5 +1,8 @@
 from qpsolvers import solve_qp
 import numpy as np
+from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Slerp
+from classes import SE3
 
 def _factor_cubic_hermite_curve(p0, n0, p1, n1):
     def H_lambda(s):
@@ -22,7 +25,6 @@ def _cubic_hermite_pos(p0, v0, p1, v1, s):
     h11 = s**3 - s**2
     return h00*p0 + h10*v0 + h01*p1 + h11*v1
 
-
 class CubicHermiteInterpolation:
     """
     Time-parameterized cubic Hermite foot trajectory (position only).
@@ -30,8 +32,8 @@ class CubicHermiteInterpolation:
 
     def __init__(
         self,
-        start_pos,
-        end_pos,
+        start_pose: SE3,
+        end_pose: SE3,
         duration,
         *,
         n0=(0, 0, 1),
@@ -42,8 +44,8 @@ class CubicHermiteInterpolation:
         s_landing=0.75,
         qp_solver='proxqp',
     ):
-        self.p0 = np.asarray(start_pos, dtype=float)
-        self.p1 = np.asarray(end_pos, dtype=float)
+        self.p0 = np.asarray(start_pose.position, dtype=float)
+        self.p1 = np.asarray(end_pose.position, dtype=float)
         self.duration = float(duration)
 
         # normalize normals
@@ -59,6 +61,8 @@ class CubicHermiteInterpolation:
 
         # internal time
         self.t = 0.0
+        rotations = R.from_quat([start_pose.rotation.as_quat(), end_pose.rotation.as_quat()])
+        self.slerp = Slerp([0, 1], rotations)
 
         # solve tangent magnitudes once
         self.lambda_, self.mu_ = self._solve_tangent_magnitudes(qp_solver)
@@ -95,9 +99,7 @@ class CubicHermiteInterpolation:
 
         return float(x[0]), float(x[1])
 
-    def pos(self):
-        """Current position based on internal time."""
-        s = np.clip(self.t / self.duration, 0.0, 1.0)
+    def pos(self, s):
         return _cubic_hermite_pos(self.p0, self.v0, self.p1, self.v1, s)
 
     def integrate(self, dt):
@@ -108,9 +110,16 @@ class CubicHermiteInterpolation:
         self.t += dt
         if self.t >= self.duration:
             self.t = self.duration
-            return self.p1.copy()
-
-        return self.pos()
+            pos = self.p1.copy()
+            rot = self.slerp(1.0)
+        else:
+            s = np.clip(self.t / self.duration, 0.0, 1.0)
+            pos = self.pos(s)
+            rot = self.slerp(s)
+        T = np.eye(4)
+        T[:3, :3] = rot.as_matrix()
+        T[:3, 3] = pos
+        return SE3(T)
 
     def reset(self):
         """Restart trajectory."""

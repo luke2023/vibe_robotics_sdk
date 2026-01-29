@@ -16,6 +16,8 @@ motor_manager = MotorControllerManager(cfg.real_config.n_motors,
                                        cfg.real_config.motor_controllers, 
                                        calibration_file=cfg.real_config.calibration_file,
                                        mode=args.mode)
+if args.mode == 0:
+    motor_manager.disable_torque()
 model = mujoco.MjModel.from_xml_path(cfg.sim_config.asset_path)
 data = mujoco.MjData(model)
 
@@ -28,7 +30,8 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     while True:
         q, dq = motor_manager.get_state()
         mujoco.mj_resetData(model, data)
-        data.qpos[:] = np.concatenate([np.array([0, 0, 0., 1, 0, 0, 0]), q])
+        data.qpos[:] = np.concatenate([np.array([0, 0, 0., 0, 0, 0, 1]), q])
+        print(data.qpos[7:])
         # data.qvel[:] = np.concatenate([np.array([0, 0, 0.]), dq])
         mujoco.mj_forward(model, data)
         viewer.sync()

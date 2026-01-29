@@ -9,7 +9,7 @@ real:
     - name: "leg"
       motor_ids: [1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 21]
       serial_config:
-        port: "/dev/ttyACM0"
+        port: "/dev/ttyACM1"
         baudrate: 1000000
       sign_change: [1, 1, 1, 1, -1, 
                     -1, 1, 1, 1, 1, 1]

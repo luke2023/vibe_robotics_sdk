@@ -1,21 +1,40 @@
 from enum import Enum
 import numpy as np
 from dataclasses import dataclass
+from scipy.spatial.transform import Rotation as R
 
 class WalkState(Enum):
     STAND = 0
     DSP = 1
     SSP = 2
 
+class WalkCommand(Enum):
+    STOP = 0
+    STRAIGHT = 1
+    RIGHT = 2
+    LEFT = 3
 
 @dataclass
-class Footstep:
-    x: float
-    y: float
+class SE3:
+    T: np.ndarray
     
     @property
     def position(self) -> np.ndarray:
-        return np.array([self.x, self.y, 0.])
+        return self.T[:3, 3]
+    
+    @property
+    def rotation(self) -> R:
+        return R.from_matrix(self.T[:3, :3])
+    
+    def translated(self, offset: np.ndarray) -> "SE3":
+        """Return a copy translated by offset (rotation unchanged)."""
+        T2 = self.T.copy()
+        T2[:3, 3] = T2[:3, 3] + offset.reshape(3)
+        return SE3(T=T2)
+
+@dataclass
+class Footstep(SE3):
+    pass
 
 @dataclass
 class RobotConfig:
@@ -41,27 +60,32 @@ class RobotParams:
 
 @dataclass
 class IKTarget:
-    left_foot_pos: np.ndarray
-    right_foot_pos: np.ndarray
+    left_foot_pose: SE3
+    right_foot_pose: SE3
     com_pos: np.ndarray
+    heading: float
     
 
 class FootType(Enum):
     LEFT = 0
     RIGHT = 1
 
-class Foot:
-    def __init__(self, position: np.ndarray, size: np.ndarray):
-        self.position = position
+class Foot(SE3):
+    def __init__(self, side: FootType, position: np.ndarray, size: np.ndarray):
+        self.side = side
+        self.T = np.eye(4)
+        self.T[:3, 3] = position
         self.size = size / 2
-        
+    
     def get_scaled_contact_area(self, scale):
         X = scale * self.size[0]
         Y = scale * self.size[1]
-        v1 = np.array([X, Y, 0.]) + self.position
-        v2 = np.array([-X, Y, 0.]) + self.position
-        v3 = np.array([-X, -Y, 0.]) + self.position
-        v4 = np.array([X, -Y, 0.]) + self.position
+        def tr(p):
+            return np.dot(self.T, np.array([p[0], p[1], p[2], 1.]))[:3]
+        v1 = tr(np.array([X, Y, 0.]))
+        v2 = tr(np.array([-X, Y, 0.]))
+        v3 = tr(np.array([-X, -Y, 0.]))
+        v4 = tr(np.array([X, -Y, 0.]))
         return np.array([v1, v2, v3, v4])
 
 class PointMass:

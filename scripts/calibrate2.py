@@ -13,4 +13,4 @@ if __name__ == '__main__':
                                            cfg.real_config.motor_controllers, 
                                            mode=0, 
                                            calibration_file=cfg.real_config.calibration_file)
-    motor_manager.calibrate()
+    motor_manager.zero_motors()
