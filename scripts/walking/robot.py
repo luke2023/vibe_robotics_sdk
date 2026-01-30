@@ -498,6 +498,8 @@ class Robot:
                 q_recv = remote.recv()
                 motor_manager.set_positions(q_recv, 0, 50)
         else:
+            state = {"direction": "straight"}
+            self.deploy_server(state)
             remote = NumpySocket(host=host, port=9000, is_sender=True)
             remote.send(cfg.default_qpos)
             input('start>')
@@ -507,6 +509,14 @@ class Robot:
             self.fsm.start_walking = True
             while True:
                 self.fsm.on_tick()
+                if state["direction"] == "straight":
+                    self.fsm.set_cmd(WalkCommand.STRAIGHT)
+                elif state["direction"] == "left":
+                    self.fsm.set_cmd(WalkCommand.LEFT)
+                elif state["direction"] == "right":
+                    self.fsm.set_cmd(WalkCommand.RIGHT)
+                elif state["direction"] == "stop":
+                    self.fsm.set_cmd(WalkCommand.STOP)
 
                 self.q = self.ik(IKTarget(
                     left_foot_pose=self.fsm.stance.left_foot,
@@ -516,6 +526,48 @@ class Robot:
                 ))
                 remote.send(self.q[7:])
                 rate_limiter.sleep()
+            
+    def deploy_server(self, state):
+        from flask import Flask, jsonify
+        import threading
+        app = Flask(__name__)
+
+        GLOBAL_STATE = state
+
+        @app.route("/")
+        def index():
+            return """
+            <html>
+            <body>
+                <select onchange="update(this.value)">
+                    <option value="straight">straight</option>
+                    <option value="left">left</option>
+                    <option value="right">right</option>
+                    <option value="stop">stop</option>
+                </select>
+
+                <script>
+                    function update(val) {
+                        fetch("/set/" + val);
+                    }
+                </script>
+            </body>
+            </html>
+            """
+
+        @app.route("/set/<direction>")
+        def set_direction(direction):
+            GLOBAL_STATE["direction"] = direction
+            return jsonify(GLOBAL_STATE)
+
+        @app.route("/state")
+        def state():
+            return jsonify(GLOBAL_STATE)
+        def run_server():
+            # IMPORTANT: disable reloader or it will spawn another process/thread
+            app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
                 
     def deploy(self):
         from flask import Flask, jsonify

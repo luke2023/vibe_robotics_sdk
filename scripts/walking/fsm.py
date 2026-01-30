@@ -49,9 +49,9 @@ class WalkingFSM:
         self.cmd = WalkCommand.STRAIGHT
     
     def set_cmd(self, cmd: WalkCommand):
+        if self.cmd == WalkCommand.STOP and cmd != WalkCommand.STOP:
+            self.start_walking = True
         self.cmd = cmd
-        if cmd == WalkCommand.STOP:
-            self.start_standing()
     
     def on_tick(self):
         if self.state == WalkState.STAND:
@@ -116,6 +116,8 @@ class WalkingFSM:
         
     def run_single_support(self):
         if self.rem_time <= 0:
+            if self.cmd == WalkCommand.STOP:
+                return self.start_standing()
             return self.start_double_support()
         self.run_swing_foot()
         self.run_com_mpc()
