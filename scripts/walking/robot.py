@@ -565,7 +565,7 @@ class Robot:
             return jsonify(GLOBAL_STATE)
         def run_server():
             # IMPORTANT: disable reloader or it will spawn another process/thread
-            app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
+            app.run(host="0.0.0.0", port=8090, debug=False, use_reloader=False)
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
                 

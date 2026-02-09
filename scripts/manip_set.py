@@ -58,8 +58,8 @@ if __name__ == '__main__':
         calibration_file=config.real_config.calibration_file,
         mode=0
     )
-    motor_manager.set_kp_kd(32, 32)
-    motor_manager.set_positions(config.default_qpos, 0, 30)
+    # motor_manager.set_kp_kd(32, 32)
+    motor_manager.set_positions(config.default_qpos, 0, 50)
     
     input('start>')
     
