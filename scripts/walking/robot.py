@@ -136,7 +136,7 @@ class Robot:
         self.walk_config = WalkConfig(
             ssp_duration=0.7,
             dsp_duration=0.07,
-            step_length=0.05,
+            step_length=0.03,
         )
         
         self.robot = pin.RobotWrapper.BuildFromMJCF(filename=self.config.xml_path, root_joint=None)
@@ -216,7 +216,7 @@ class Robot:
     def ik(self,
        ik_target: IKTarget,
        max_iters: int = 300,
-       tol: float = 1e-3,
+       tol: float = 2e-3,
        damping: float = 3e-2,
        step: float = 0.05,
        update_heading: bool=False) -> np.ndarray:
@@ -271,6 +271,7 @@ class Robot:
         self.robot.data = data
 
         q = pin.neutral(model).copy()
+        # q = self.q.copy()
         
 
         left_fid = model.getFrameId(f"{left_geom_name}_frame")
@@ -422,16 +423,33 @@ class Robot:
             self.fsm.on_tick()
             t_slider.value += dt
             
+            
+            # Scale COM only along heading-lateral direction, not world X.
+            # Use mid-foot as local origin so turning/global translation does not distort it.
+            com_pos_nominal = self.fsm.stance.com.position
+            theta = self.fsm.footstep_generator.ref_theta
+            fwd = np.array([np.sin(theta), np.cos(theta)])     # world XY forward
+            lat = np.array([np.cos(theta), -np.sin(theta)])    # world XY lateral/right
+            center_xy = 0.5 * (
+                self.fsm.stance.left_foot.position[:2]
+                + self.fsm.stance.right_foot.position[:2]
+            )
+            d_xy = com_pos_nominal[:2] - center_xy
+            d_f = d_xy @ fwd
+            d_l = d_xy @ lat
+            lateral_scale = 0.6
+            com_xy = center_xy + d_f * fwd + (lateral_scale * d_l) * lat
+            com_pos = np.array([com_xy[0], com_xy[1], com_pos_nominal[2]])
             left_foot_marker.position = self.fsm.stance.left_foot.position
             right_foot_marker.position = self.fsm.stance.right_foot.position
-            com_marker.position = self.fsm.stance.com.position
+            com_marker.position = com_pos
 
             
             start_time = time.time()
             self.q = self.ik(IKTarget(
                 left_foot_pose=self.fsm.stance.left_foot,
                 right_foot_pose=self.fsm.stance.right_foot,
-                com_pos=self.fsm.stance.com.position,
+                com_pos=com_pos,
                 heading=self.fsm.footstep_generator.ref_theta
             ), update_heading=(heading_counter % heading_update == 0))
             print(f"IK solve time: {time.time() - start_time:.3f}s")
@@ -570,7 +588,89 @@ class Robot:
             app.run(host="0.0.0.0", port=8090, debug=False, use_reloader=False)
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
+         
+    def deploy_controller(self):
+        import pygame
+        
+        pygame.init()
+        pygame.joystick.init()
+        
+        if pygame.joystick.get_count() == 0:
+            raise RuntimeError("No joystick detected")
+        
+        joystick = pygame.joystick.Joystick(0)
+        joystick.init()
+        
+        cfg = load_config('sundaya1_real_config_half_2dof.yaml')
+        motor_manager = MotorControllerManager(
+            cfg.real_config.n_motors,
+            cfg.real_config.motor_controllers,
+            cfg.real_config.calibration_file,
+            mode=0
+        )
+        motor_manager.set_positions(cfg.default_qpos, 0, 30)
+        
+        input('start>')
+        try:
+            dt = 0.03
+            rate_limiter = RateLimiter(frequency=1 / dt, warn=True)
+            self.fsm.start_walking = True
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.JOYAXISMOTION:
+                        x_axis = joystick.get_axis(0)
+                        y_axis = joystick.get_axis(1)
+                        if abs(x_axis) < 0.2:
+                            x_axis = 0
+                        if abs(y_axis) < 0.2:
+                            y_axis = 0
+                        if y_axis < 0:
+                            self.fsm.set_cmd(WalkCommand.STRAIGHT)
+                        elif y_axis > 0:
+                            self.fsm.set_cmd(WalkCommand.STOP)
+                        if x_axis < 0:
+                            self.fsm.set_cmd(WalkCommand.LEFT)
+                        elif x_axis > 0:
+                            self.fsm.set_cmd(WalkCommand.RIGHT)
+                print(self.fsm.cmd)
+                self.fsm.on_tick()
                 
+                com_pos_nominal = self.fsm.stance.com.position
+                theta = self.fsm.footstep_generator.ref_theta
+                fwd = np.array([np.sin(theta), np.cos(theta)])     # world XY forward
+                lat = np.array([np.cos(theta), -np.sin(theta)])    # world XY lateral/right
+                center_xy = 0.5 * (
+                    self.fsm.stance.left_foot.position[:2]
+                    + self.fsm.stance.right_foot.position[:2]
+                )
+                d_xy = com_pos_nominal[:2] - center_xy
+                d_f = d_xy @ fwd
+                d_l = d_xy @ lat
+                lateral_scale = 0.6
+                com_xy = center_xy + d_f * fwd + (lateral_scale * d_l) * lat
+                com_pos = np.array([com_xy[0], com_xy[1], com_pos_nominal[2]])
+
+                start_time = time.time()
+                self.q = self.ik(IKTarget(
+                    left_foot_pose=self.fsm.stance.left_foot,
+                    right_foot_pose=self.fsm.stance.right_foot,
+                    com_pos=com_pos,
+                    heading=self.fsm.footstep_generator.ref_theta
+                ))
+                print(f"IK solve time: {time.time() - start_time:.3f}s")
+                
+                # rate_limiter_inner = RateLimiter(frequency=1 / 0.002, warn=True)
+                # for _ in range(int(dt / 0.002)):
+                #     duty = 32 * (self.q[7:] - motor_manager.get_state()[0]) - 1.5 * motor_manager.get_state()[1]
+                #     motor_manager.set_duty(duty * 200)
+                #     rate_limiter_inner.sleep()
+                
+                motor_manager.set_positions(self.q[7:], 0, 50)
+                # rate_limiter.sleep()
+        except KeyboardInterrupt:
+            motor_manager.disable_torque()
+        
+           
     def deploy(self):
         from flask import Flask, jsonify
         import threading
@@ -634,12 +734,27 @@ class Robot:
                 elif GLOBAL_STATE["direction"] == "right":
                     self.fsm.set_cmd(WalkCommand.RIGHT)
                 self.fsm.on_tick()
+                
+                com_pos_nominal = self.fsm.stance.com.position
+                theta = self.fsm.footstep_generator.ref_theta
+                fwd = np.array([np.sin(theta), np.cos(theta)])     # world XY forward
+                lat = np.array([np.cos(theta), -np.sin(theta)])    # world XY lateral/right
+                center_xy = 0.5 * (
+                    self.fsm.stance.left_foot.position[:2]
+                    + self.fsm.stance.right_foot.position[:2]
+                )
+                d_xy = com_pos_nominal[:2] - center_xy
+                d_f = d_xy @ fwd
+                d_l = d_xy @ lat
+                lateral_scale = 0.6
+                com_xy = center_xy + d_f * fwd + (lateral_scale * d_l) * lat
+                com_pos = np.array([com_xy[0], com_xy[1], com_pos_nominal[2]])
 
                 start_time = time.time()
                 self.q = self.ik(IKTarget(
                     left_foot_pose=self.fsm.stance.left_foot,
                     right_foot_pose=self.fsm.stance.right_foot,
-                    com_pos=self.fsm.stance.com.position * np.array([0.6, 1., 1.]),
+                    com_pos=com_pos,
                     heading=self.fsm.footstep_generator.ref_theta
                 ))
                 print(f"IK solve time: {time.time() - start_time:.3f}s")
@@ -662,7 +777,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default='view', choices=['view', 'simulate', 'deploy', 'remote'], help='Mode: view, simulate, deploy')
+    parser.add_argument('--mode', type=str, default='view', choices=['view', 'simulate', 'deploy', 'remote', 'controller'], help='Mode: view, simulate, deploy, remote, controller')
     parser.add_argument('--sender', action='store_true', help='Deploy via remote sender')
     parser.add_argument('--host', type=str, default='', help='Remote host')
     args = parser.parse_args()
@@ -676,3 +791,5 @@ if __name__ == "__main__":
         robot.deploy()
     elif args.mode == "remote":
         robot.deploy_remote(args.host, args.sender)
+    elif args.mode == "controller":
+        robot.deploy_controller()

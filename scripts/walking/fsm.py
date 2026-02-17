@@ -46,7 +46,7 @@ class WalkingFSM:
             step_length=walk_config.step_length,
             foot_spread=robot_params.foot_spred,
             initial_y=robot_params.foot_y,
-            steering_strength=np.deg2rad(3.)
+            steering_strength=np.deg2rad(5.)
         )
         self.cmd = WalkCommand.STRAIGHT
     
@@ -261,7 +261,7 @@ class WalkingFSM:
         self.f_mpc = LinearPredictiveControl(
             A, B, C, D, e[0],
             x_init=np.array([com_fl[0], comd_fl[0], comdd_fl[0]]),
-            x_goal=np.array([goal_fl[0] + 0.08, 0., 0.]),
+            x_goal=np.array([goal_fl[0] + 0.05, 0., 0.]),
             nb_steps=nb_preview_steps,
             wxt=2.,
             wu=0.01,
