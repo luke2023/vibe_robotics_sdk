@@ -17,6 +17,10 @@ from pathlib import Path
 from viberobotics.motor.motor_controller_manager import MotorControllerManager
 from viberobotics.configs.config import load_config
 from scipy.spatial.transform import Rotation as R
+import pygame
+import viser.uplot
+
+pygame.init()
 
 def _skew(v: np.ndarray) -> np.ndarray:
     v = np.asarray(v, dtype=float).reshape(3)
@@ -184,6 +188,13 @@ class Robot:
             self.config,
             self.params
         )
+        
+        
+        pygame.joystick.init()
+        assert pygame.joystick.get_count() > 0
+        self.joystick = pygame.joystick.Joystick(0)
+        self.cmd = np.zeros(3)
+        
     
     def get_params(self):
         pin.centerOfMass(self.model, self.robot.data, self.default_q)
@@ -271,6 +282,7 @@ class Robot:
         self.robot.data = data
 
         q = pin.neutral(model).copy()
+        q[3:7] = self.q[3:7].copy()
         # q = self.q.copy()
         
 
@@ -377,7 +389,16 @@ class Robot:
             dq = J.T @ np.linalg.solve(A, e)
             q = pin.integrate(model, q, step * dq)
 
-        return q + np.concatenate([offset, np.zeros(self.nq - 3)])
+        success = np.linalg.norm(e) < tol
+        return q + np.concatenate([offset, np.zeros(self.nq - 3)]), success
+    
+    def get_joystick_cmd(self):
+        for event in pygame.event.get():
+            pass
+        self.cmd[0] = -self.joystick.get_axis(1)  # forward/backward
+        self.cmd[1] = -self.joystick.get_axis(0)   # left/right
+        self.cmd[2] = self.cmd[2] * 0.8 + 0.2 * self.joystick.get_axis(3)  # yaw
+        return self.cmd
     
     def _get_targets(self):
         com_pos_nominal = self.fsm.stance.com.position
@@ -390,9 +411,11 @@ class Robot:
         )
         d_xy = com_pos_nominal[:2] - center_xy
         d_f = d_xy @ fwd
+        # d_f = np.clip(d_f, -0.01, 0.01)
         d_l = d_xy @ lat
-        lateral_scale = 0.6 if self.fsm.cmd == WalkCommand.STRAIGHT else 0.8
-        forward_scale = 1.
+        lateral_scale = 0.8 if self.fsm.cmd[0] < 0.1 or self.cmd[1] > 0.1 else 0.6
+        forward_scale = 0.9 if self.fsm.cmd[2] > 0.1 else 1.
+        self.d_f = d_f
         com_xy = center_xy + (forward_scale * d_f) * fwd + (lateral_scale * d_l) * lat
         com_pos = np.array([com_xy[0], com_xy[1], com_pos_nominal[2]])
         return IKTarget(
@@ -416,20 +439,9 @@ class Robot:
                 start_button.label = 'stop'
                 self.fsm.start_walking = True
         
-        cmd_dropdown = visualizer.server.gui.add_dropdown('command', ['straight', 'left', 'right', 'stop'], initial_value='straight')
-        @cmd_dropdown.on_update
-        def _(_) -> None:
-            cmd_str = cmd_dropdown.value
-            if cmd_str == 'straight':
-                self.fsm.set_cmd(WalkCommand.STRAIGHT)
-            elif cmd_str == 'left':
-                self.fsm.set_cmd(WalkCommand.LEFT)
-            elif cmd_str == 'right':
-                self.fsm.set_cmd(WalkCommand.RIGHT)
-            elif cmd_str == 'stop':
-                self.fsm.set_cmd(WalkCommand.STOP)
-        
         t_slider = visualizer.server.gui.add_number('t', 0., min=0., max=100., step=0.01, disabled=True)
+        
+        success_indicator = visualizer.server.gui.add_text('ik_success', 'IK solve success: N/A')
         
         left_foot_marker = visualizer.server.scene.add_icosphere('/left_foot_marker', radius=0.02, color=(255, 0, 0))
         right_foot_marker = visualizer.server.scene.add_icosphere('/right_foot_marker', radius=0.02, color=(0, 255, 0))
@@ -440,19 +452,51 @@ class Robot:
         line_segments = []
         heading_update = 60
         heading_counter = 0
+        
+        t = [time.time()]
+        d_f = [0]
+        plot = visualizer.server.gui.add_uplot(
+            data=(np.array(t), np.array(d_f)),
+            series=(
+                viser.uplot.Series(label='time'),
+                viser.uplot.Series(label='d_f', stroke='blue', width=2),
+            ),
+            title='d_f over time',
+            scales={
+                'x': viser.uplot.Scale(time=True, auto=True),
+                'y': viser.uplot.Scale(time=False, auto=True),
+            },
+            aspect=2.
+        )
+        
         while True:
+            self.fsm.set_cmd(self.get_joystick_cmd())
             self.fsm.on_tick()
             t_slider.value += dt
+            
             
             
             # Scale COM only along heading-lateral direction, not world X.
             # Use mid-foot as local origin so turning/global translation does not distort it.
             ik_target = self._get_targets()
+            
+            
+            t.append(time.time())
+            d_f.append(self.d_f)
+            t = t[-200:]
+            d_f = d_f[-200:]
+            plot.data = (np.array(t), np.array(d_f))
+
+            
             left_foot_marker.position = ik_target.left_foot_pose.position
             right_foot_marker.position = ik_target.right_foot_pose.position
             com_marker.position = ik_target.com_pos
             start_time = time.time()
-            self.q = self.ik(ik_target, update_heading=(heading_counter % heading_update == 0))
+            q, success = self.ik(ik_target, update_heading=(heading_counter % heading_update == 0), tol=0.01)
+            success = success and np.linalg.norm(q - self.q) < 0.2
+            if success:
+                self.q = q
+            success_indicator.label = f'IK solve success: {success}'
             # print(f"IK solve time: {time.time() - start_time:.3f}s")
             heading_counter += 1
             
@@ -471,8 +515,8 @@ class Robot:
                     colors=np.array([0, 1, 1]),
                     line_width=3.0,
                 )
-            
-            visualizer.set_state(self.q)
+            if success:
+                visualizer.set_state(self.q)
             rate_limiter.sleep()
     
     def simulate(self):
@@ -623,16 +667,6 @@ class Robot:
         server_thread.start()
          
     def deploy_controller(self):
-        import pygame
-        
-        pygame.init()
-        pygame.joystick.init()
-        
-        if pygame.joystick.get_count() == 0:
-            raise RuntimeError("No joystick detected")
-        
-        joystick = pygame.joystick.Joystick(0)
-        joystick.init()
         
         cfg = load_config('sundaya1_real_config_half_2dof.yaml')
         motor_manager = MotorControllerManager(
@@ -648,23 +682,9 @@ class Robot:
             dt = 0.03
             rate_limiter = RateLimiter(frequency=1 / dt, warn=True)
             self.fsm.start_walking = True
+            cmd = np.zeros(3)
             while True:
-                for event in pygame.event.get():
-                    if event.type == pygame.JOYAXISMOTION:
-                        x_axis = joystick.get_axis(0)
-                        y_axis = joystick.get_axis(1)
-                        if abs(x_axis) < 0.2:
-                            x_axis = 0
-                        if abs(y_axis) < 0.2:
-                            y_axis = 0
-                        if y_axis < 0:
-                            self.fsm.set_cmd(WalkCommand.STRAIGHT)
-                        elif y_axis > 0:
-                            self.fsm.set_cmd(WalkCommand.STOP)
-                        if x_axis < 0:
-                            self.fsm.set_cmd(WalkCommand.LEFT)
-                        elif x_axis > 0:
-                            self.fsm.set_cmd(WalkCommand.RIGHT)
+                self.fsm.set_cmd(self.get_joystick_cmd())
                 print(self.fsm.cmd)
                 self.fsm.on_tick()
                 
@@ -684,7 +704,7 @@ class Robot:
                 com_pos = np.array([com_xy[0], com_xy[1], com_pos_nominal[2]])
 
                 start_time = time.time()
-                self.q = self.ik(IKTarget(
+                self.q, success = self.ik(IKTarget(
                     left_foot_pose=self.fsm.stance.left_foot,
                     right_foot_pose=self.fsm.stance.right_foot,
                     com_pos=com_pos,
