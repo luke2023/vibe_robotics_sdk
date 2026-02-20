@@ -62,32 +62,32 @@ class FootstepGenerator:
         return np.array([np.cos(theta), -np.sin(theta)])
     
     def get_next_footstep(self,
-                          cmd: WalkCommand,
-                          stance_foot: FootType) -> Footstep:
+                      cmd: np.ndarray,
+                      stance_foot: FootType) -> Footstep:
+        # cmd = [fwd, lat, yaw]
         next_foot = FootType.LEFT if stance_foot == FootType.RIGHT else FootType.RIGHT
-        if cmd == WalkCommand.STOP:
-            dtheta = 0.
-            d = 0.
-        else:
-            d = self.step_length
-            if cmd == WalkCommand.STRAIGHT:
-                dtheta = 0.
-            elif cmd == WalkCommand.RIGHT:
-                dtheta = self.steering_strength
-                d = 0.
-            elif cmd == WalkCommand.LEFT:
-                dtheta = -self.steering_strength
-                d = 0.
-        
-        self.ref_x += d * self._forward(self.ref_theta)[0]
-        self.ref_y += d * self._forward(self.ref_theta)[1]
-        self.ref_theta += dtheta
-        self.ref_theta = wrap_pi(self.ref_theta)
-        
+
+        # scale commands
+        d_fwd  = float(cmd[0]) * self.step_length
+        d_lat  = float(cmd[1]) * self.step_length   # or a separate lateral_step_length
+        dtheta = float(cmd[2]) * self.steering_strength
+
+        fwd = self._forward(self.ref_theta)   # unit vector
+        rgt = self._right(self.ref_theta)     # unit vector (robot-right)
+
+        # Pick convention:
+        # If you want cmd[1] > 0 to mean "move left", subtract rgt.
+        # If you want cmd[1] > 0 to mean "move right", add rgt.
+        self.ref_x += d_fwd * fwd[0] - d_lat * rgt[0]
+        self.ref_y += d_fwd * fwd[1] - d_lat * rgt[1]
+
+        self.ref_theta = wrap_pi(self.ref_theta + dtheta)
+
+        # place the swing foot at +/- foot_spread about the reference, in the current heading
         lat_sign = -1 if next_foot == FootType.LEFT else +1
-        foot_xy = np.array([self.ref_x, self.ref_y]) + self._right(self.ref_theta) * lat_sign * self.foot_spread
+        foot_xy = np.array([self.ref_x, self.ref_y]) + rgt * lat_sign * self.foot_spread
+
         T_foot = T_world_xy_yaw(foot_xy[0], foot_xy[1], self.ref_theta)
-        
         return Footstep(T=T_foot)
         
 if __name__ == "__main__":

@@ -8,11 +8,6 @@ class WalkState(Enum):
     DSP = 1
     SSP = 2
 
-class WalkCommand(Enum):
-    STOP = 0
-    STRAIGHT = 1
-    RIGHT = 2
-    LEFT = 3
 
 @dataclass
 class SE3:
