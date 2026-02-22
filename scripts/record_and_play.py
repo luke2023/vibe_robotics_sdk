@@ -12,16 +12,10 @@ import json
 import os
 
 def urdf_to_mj(q):
-    return np.array(q)[
-        [5, 4, 3, 2, 1, 0,
-        11, 10, 9, 8, 7, 6,]
-    ]
+    return np.array(q)
 
 def mj_to_urdf(q):
-    return np.array(q)[
-        [5, 4, 3, 2, 1, 0,
-        11, 10, 9, 8, 7, 6,]
-    ]
+    return np.array(q)
 
 @dataclass
 class Frame:
@@ -53,10 +47,17 @@ if __name__ == "__main__":
         root_node_name="/sunday_a1"
     )
     
+    op_motor_ids_input = server.gui.add_text("Motor IDs affected by Disable Torque (comma separated, empty for all)", initial_value="")
+    
     disable_torque_button = server.gui.add_button('Disable Torque')
     @disable_torque_button.on_click
     def _(_):
-        work_queue.append({'type': 'disable_torque'})
+        motor_ids_str = op_motor_ids_input.value
+        if motor_ids_str:
+            motor_ids = [int(x) for x in motor_ids_str.split(',')]
+        else:
+            motor_ids = None
+        work_queue.append({'type': 'disable_torque', 'q': motor_ids})
     
     home_button = server.gui.add_button('Go to Default qpos')
     @home_button.on_click
@@ -82,7 +83,7 @@ if __name__ == "__main__":
             @a_input.on_update
             def _(_):
                 frames[idx].a = a_input.value
-            interval_input = server.gui.add_number(f'interval', initial_value=0.1, min=0.01, max=1.0, step=0.01)
+            interval_input = server.gui.add_number(f'interval', initial_value=0.1, min=0.01, max=5.0, step=0.01)
             @interval_input.on_update
             def _(_):
                 frames[idx].interval = interval_input.value
@@ -91,6 +92,7 @@ if __name__ == "__main__":
             @go_to_frame_button.on_click
             def _(_):
                 frame = frames[idx]
+                print(idx, frame)
                 work_queue.append({'type': 'set_positions', 'q': frame.q, 'v': 0, 'a': 20})
             
             enable_checkbox = server.gui.add_checkbox(f'Enable Frame{idx}', initial_value=True)
@@ -139,6 +141,8 @@ if __name__ == "__main__":
         with open('recorded_motion.json', 'w') as f:
             json.dump(motion_data, f, indent=4)
     
+    loop_checkbox = server.gui.add_checkbox('Loop Motion', initial_value=True)
+    
     play_button = server.gui.add_button('Play Motion')
     @play_button.on_click
     def _(_):
@@ -165,13 +169,15 @@ if __name__ == "__main__":
         add_frame(q, v, a, interval)
  
     while True:
-        q, _ = motor_manager.get_state()
-        viser_urdf.update_cfg(mj_to_urdf(q))
+        # q, _ = motor_manager.get_state()
+        # viser_urdf.update_cfg(mj_to_urdf(q))
         work = work_queue.pop(0) if len(work_queue) > 0 else None
         if work is not None:
             if work['type'] == 'disable_torque':
-                motor_manager.disable_torque()
+                motor_ids = work.get('q', None)
+                motor_manager.disable_torque(motor_ids)
             elif work['type'] == 'set_positions':
+                print(f"Setting positions to {work['q']} with v={work['v']} and a={work['a']}")
                 motor_manager.set_positions(work['q'], work['v'], work['a'])
     
         if playing:
@@ -179,7 +185,15 @@ if __name__ == "__main__":
             if current_time >= next_frame_time:
                 frame = frames[current_frame_idx]
                 if not frame.enable:
-                    current_frame_idx = (current_frame_idx + 1) % len(frames)
+                    # current_frame_idx = (current_frame_idx + 1) % len(frames)
+                    current_frame_idx += 1
+                    if current_frame_idx >= len(frames):
+                        if loop_checkbox.value:
+                            current_frame_idx = 0
+                        else:
+                            playing = False
+                            play_button.label = "Play Motion"
+                            current_frame_idx = 0
                     next_frame_time = current_time
                     continue
                 motor_manager.set_positions(frame.q, frame.v, frame.a)

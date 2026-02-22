@@ -15,3 +15,4 @@ else:
         for event in pygame.event.get():
             if event.type == pygame.JOYAXISMOTION:
                 print([joystick.get_axis(i) for i in range(joystick.get_numaxes())])
+        print([joystick.get_button(i) for i in range(joystick.get_numbuttons())])

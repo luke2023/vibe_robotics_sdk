@@ -1,3 +1,4 @@
+import time
 from viberobotics.motor.motor_controller import MotorController
 from viberobotics.configs.config import MotorControllerConfig
 from viberobotics.utils.math import *
@@ -7,6 +8,7 @@ from viberobotics.constants import CALIBRATION_FILE
 import numpy as np
 from typing import List
 from pathlib import Path
+import json
 
 class MotorControllerManager:
     def __init__(self, n_motors, motor_mapping: list[MotorControllerConfig], calibration_file=None, mode=0):
@@ -88,13 +90,19 @@ class MotorControllerManager:
             mj_q = self._real_to_mj(q)
         return mj_q * self.sign_change, mj_dq * self.sign_change
 
-    def disable_torque(self):
+    def disable_torque(self, motor_ids=None):
         for controller in self.controllers:
-            controller.disable_torque()
+            controller_motor_ids = set(controller.motor_ids)
+            if motor_ids is not None:
+                controller_motor_ids = controller_motor_ids.intersection(set(motor_ids))
+            controller.disable_torque(controller_motor_ids)
     
-    def zero_motors(self):
+    def zero_motors(self, motor_ids=None):
         for controller in self.controllers:
-            controller.zero_motors()
+            controller_motor_ids = set(controller.motor_ids)
+            if motor_ids is not None:
+                controller_motor_ids = controller_motor_ids.intersection(set(motor_ids))
+            controller.zero_motors(controller_motor_ids)
     
     def set_mode(self, mode):
         print(f"Setting motor mode to {mode}")
@@ -123,6 +131,10 @@ class MotorControllerManager:
         
     def set_raw_positions(self, q_pos_step, q_vel, q_acc):
         assert self.mode == 0, "Can only set raw positions in Position Mode"
+        if type(q_vel) == int or type(q_vel) == float:
+            q_vel = q_vel * np.ones_like(q_pos_step)
+        if type(q_acc) == int or type(q_acc) == float:
+            q_acc = q_acc * np.ones_like(q_pos_step)
         for controller in self.controllers:
             idxs = self.motor_order[controller.motor_ids]
             controller.send_raw_positions(q_pos_step[idxs], q_vel[idxs], q_acc[idxs])
@@ -148,3 +160,17 @@ class MotorControllerManager:
         q, _ = self.get_raw_state()
         
         np.savetxt(self.calibration_file, q, delimiter=",", fmt="%d")
+        
+    def get_sim_idxs(self, controller_name):
+        controller = self.controllers_mapping[controller_name]
+        return self.motor_order[controller.motor_ids]
+    
+    def play_recording(self, recording_file):
+        frames = json.load(open(recording_file, 'r'))
+        for frame in frames:
+            q = frame['q']
+            v = frame['v']
+            a = frame['a']
+            interval = frame['interval']
+            self.set_positions(q, v, a)
+            time.sleep(interval)

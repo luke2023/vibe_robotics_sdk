@@ -15,6 +15,11 @@ if __name__ == '__main__':
                                            mode=args.mode, 
                                            calibration_file=cfg.real_config.calibration_file)
     if args.mode == 0:
-        motor_manager.zero_motors()
+        inp = input('Motor ids to zero (comma separated, ignore to zero all): ')
+        if inp.strip() == '':
+            motor_ids = None
+        else:
+            motor_ids = [int(x) for x in inp.split(',')]
+        motor_manager.zero_motors(motor_ids)
     else:
         motor_manager.calibrate()

@@ -46,12 +46,17 @@ class WalkingFSM:
             step_length=walk_config.step_length,
             foot_spread=robot_params.foot_spred,
             initial_y=robot_params.foot_y,
-            steering_strength=np.deg2rad(4.)
+            steering_strength=np.deg2rad(5.)
         )
         # self.cmd = WalkCommand.STRAIGHT
         # self.last_cmd = WalkCommand.STRAIGHT
         # self.tick = 0
         # self.last_change_cmd_tick = 0
+        
+        self.com_xy = None
+        self.goal_xy = None
+        self.com_fl = None
+        self.goal_fl = None
     
     def set_cmd(self, cmd: np.ndarray):
         if np.linalg.norm(cmd) > 0.01:
@@ -269,7 +274,13 @@ class WalkingFSM:
         fwd_adjust = 0.06 if np.abs(self.cmd[0]) > 0.1 else 0.005
         fwd_adjust *= np.sign(self.cmd[0]) * 0.7
         fwd_adjust *= 2
-        print(fwd_adjust)
+        
+        # if np.abs(self.cmd[2]) > 0.1:
+        #     fwd_adjust += 0.04
+        
+        lat_adjust = 0.02 if np.abs(self.cmd[2]) > 0.1 else 0.
+        
+        # print(fwd_adjust)
         # if self.cmd[2] > 0.1:
         #     fwd_adjust = 0.0
 
@@ -289,6 +300,13 @@ class WalkingFSM:
         #             fwd_adjust = 0.0
         
         # MPC in forward axis
+        self.com_xy = self._fl_to_world @ com_fl
+        self.goal_xy = self._fl_to_world @ goal_fl
+        self.com_fl = com_fl.copy()
+        self.goal_fl = goal_fl.copy()
+        
+        print(com_fl, goal_fl)
+        
         self.f_mpc = LinearPredictiveControl(
             A, B, C, D, e[0],
             x_init=np.array([com_fl[0], comd_fl[0], comdd_fl[0]]),
@@ -302,11 +320,10 @@ class WalkingFSM:
         self.l_mpc = LinearPredictiveControl(
             A, B, C, D, e[1],
             x_init=np.array([com_fl[1], comd_fl[1], comdd_fl[1]]),
-            x_goal=np.array([goal_fl[1] * 0.2, 0., 0.]),
+            x_goal=np.array([goal_fl[1], 0., 0.]),
             nb_steps=nb_preview_steps,
             wxt=1.,
             wu=0.01,
-            wxc=3.
         )
 
         self.f_mpc.solve()

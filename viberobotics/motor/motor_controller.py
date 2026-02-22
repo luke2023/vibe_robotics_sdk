@@ -153,7 +153,7 @@ class MotorController:
             motor_q_pos = q_pos_step[i]
             motor_q_acc = q_acc[i]
             motor_q_vel = q_vel[i]  # Updated to use motor_q_vel[i]
-            print(f'sending to motor {servo_id}: pos {motor_q_pos}, vel {motor_q_vel}, acc {motor_q_acc}')
+            # print(f'sending to motor {servo_id}: pos {motor_q_pos}, vel {motor_q_vel}, acc {motor_q_acc}')
             scs_addparam_result = self.packetHandler.SyncWritePosEx(servo_id, motor_q_pos, motor_q_vel, motor_q_acc)
             if scs_addparam_result != True:
                 raise GroupAddParamFailedException()
@@ -164,28 +164,38 @@ class MotorController:
             raise SyncWriteFailedException()
         self.packetHandler.groupSyncWrite.clearParam()
     
-    def zero_motors(self):
+    def zero_motors(self, motor_ids=[]):
+        n_motors = 0
         for i in range(len(self.motor_ids)):
+            if self.motor_ids[i] not in motor_ids:
+                continue
             servo_id = self.motor_ids[i]
+            n_motors += 1
 
             scs_addparam_result = self.packetHandler.SyncTorqueOffCalPos(servo_id, np.uint8(128))
             if scs_addparam_result != True:
                 raise GroupAddParamFailedException()
-
+        if n_motors == 0:
+            return
         scs_comm_result = self.packetHandler.groupSyncWrite_TorqueOffCalPos.txPacket()
         if scs_comm_result != COMM_SUCCESS:
            raise SyncWriteFailedException()
 
         self.packetHandler.groupSyncWrite_TorqueOffCalPos.clearParam()
     
-    def disable_torque(self):
+    def disable_torque(self, motor_ids=None):
+        n_affected = 0
         for i in range(len(self.motor_ids)):
+            if motor_ids is not None and self.motor_ids[i] not in motor_ids:
+                continue
             servo_id = self.motor_ids[i]
+            n_affected += 1
 
             scs_addparam_result = self.packetHandler.SyncTorqueOffCalPos(servo_id, np.uint8(0))
             if scs_addparam_result != True:
                 raise GroupAddParamFailedException()
-
+        if n_affected == 0:
+            return
         scs_comm_result = self.packetHandler.groupSyncWrite_TorqueOffCalPos.txPacket()
         if scs_comm_result != COMM_SUCCESS:
             print(scs_comm_result)

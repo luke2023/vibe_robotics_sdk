@@ -15,10 +15,12 @@ from loop_rate_limiters import RateLimiter
 import mujoco, mujoco.viewer
 from pathlib import Path
 from viberobotics.motor.motor_controller_manager import MotorControllerManager
+from viberobotics.motor.motor_controller import MotorController
 from viberobotics.configs.config import load_config
 from scipy.spatial.transform import Rotation as R
 import pygame
 import viser.uplot
+import plotly.express as px
 
 pygame.init()
 
@@ -156,44 +158,24 @@ class Robot:
         
         self.params = self.get_params()
         
-        self.pink_configuration = pink.Configuration(self.robot.model, self.robot.data, self.default_q)
-        self.left_foot_task = FrameTask(
-            self.config.left_foot_name,
-            position_cost=4.0,
-            orientation_cost=5.0,
-        )
-        self.right_foot_task = FrameTask(
-            self.config.right_foot_name,
-            position_cost=4.0,
-            orientation_cost=5.0,
-        )
-        self.com_task = ComTask(
-            cost=100.0,
-        )
-        self.ik_tasks: List[Union[FrameTask, ComTask]] = [
-            self.left_foot_task,
-            self.right_foot_task,
-            self.com_task
-        ]
-        for task in self.ik_tasks:
-            task.set_target_from_configuration(self.pink_configuration)
-        self.solver = qpsolvers.available_solvers[0]
-        if "proxqp" in qpsolvers.available_solvers:
-            self.solver = "proxqp"
             
         # self.footsteps = generate_footsteps(1.0, self.walk_config.step_length, self.params.foot_spred, initial_y=0.05)
-        self.fsm = WalkingFSM(
-            self.walk_config,
-            None,
-            self.config,
-            self.params
-        )
+        
+        self._init_walking()
         
         
         pygame.joystick.init()
         assert pygame.joystick.get_count() > 0
         self.joystick = pygame.joystick.Joystick(0)
         self.cmd = np.zeros(3)
+        
+    def _init_walking(self):
+        self.fsm = WalkingFSM(
+            self.walk_config,
+            None,
+            self.config,
+            self.params
+        )
         
     
     def get_params(self):
@@ -393,11 +375,11 @@ class Robot:
         return q + np.concatenate([offset, np.zeros(self.nq - 3)]), success
     
     def get_joystick_cmd(self):
-        for event in pygame.event.get():
+        for _ in pygame.event.get():
             pass
         self.cmd[0] = -self.joystick.get_axis(1)  # forward/backward
         self.cmd[1] = -self.joystick.get_axis(0)   # left/right
-        self.cmd[2] = self.cmd[2] * 0.8 + 0.2 * self.joystick.get_axis(3)  # yaw
+        self.cmd[2] =  self.joystick.get_axis(3)  # yaw
         return self.cmd
     
     def _get_targets(self):
@@ -411,9 +393,9 @@ class Robot:
         )
         d_xy = com_pos_nominal[:2] - center_xy
         d_f = d_xy @ fwd
-        # d_f = np.clip(d_f, -0.01, 0.01)
+        d_f = np.clip(d_f, -0.002, 0.002)
         d_l = d_xy @ lat
-        lateral_scale = 0.8 if np.abs(self.fsm.cmd[0]) < 0.1 or np.abs(self.cmd[1]) > 0.1 else 0.6
+        lateral_scale = 0.7 if np.abs(self.cmd[0]) < 0.1 and np.abs(self.cmd[2]) > 0.1 or np.abs(self.cmd[1]) > 0.1 else 0.5
         forward_scale = 1.
         self.d_f = d_f
         com_xy = center_xy + (forward_scale * d_f) * fwd + (lateral_scale * d_l) * lat
@@ -442,6 +424,8 @@ class Robot:
         t_slider = visualizer.server.gui.add_number('t', 0., min=0., max=100., step=0.01, disabled=True)
         
         success_indicator = visualizer.server.gui.add_text('ik_success', 'IK solve success: N/A')
+        com_xy_marker = visualizer.server.scene.add_icosphere('/com_xy_marker', radius=0.02, color=(255, 0, 255))
+        goal_xy_marker = visualizer.server.scene.add_icosphere('/goal_xy_marker', radius=0.02, color=(255, 255, 0))
         
         left_foot_marker = visualizer.server.scene.add_icosphere('/left_foot_marker', radius=0.02, color=(255, 0, 0))
         right_foot_marker = visualizer.server.scene.add_icosphere('/right_foot_marker', radius=0.02, color=(0, 255, 0))
@@ -470,6 +454,23 @@ class Robot:
             },
             aspect=2.
         )
+        fl_plot_x = np.array([0., 0.])
+        fl_plot_y = np.array([0., 0.])
+        def create_fl_figure():
+            # scatter plot (2 points: com_fl and goal_fl)
+            fig = px.scatter(
+                x=fl_plot_x,
+                y=fl_plot_y,
+                title='com_fl and goal_fl',
+                color=['blue', 'red'],
+            )
+            fig.update_xaxes(range=[-0.2, 0.2])
+            fig.update_yaxes(range=[fl_plot_y[0] - 0.1, fl_plot_y[0] + 0.1])
+            return fig
+        
+        plt_fl = visualizer.server.gui.add_plotly(
+            figure=create_fl_figure(),
+        )
         
         while True:
             self.fsm.set_cmd(self.get_joystick_cmd())
@@ -477,12 +478,20 @@ class Robot:
             t_slider.value += dt
             
             
-            
             # Scale COM only along heading-lateral direction, not world X.
             # Use mid-foot as local origin so turning/global translation does not distort it.
             ik_target = self._get_targets()
             
-            
+            if self.fsm.com_xy is not None:
+                com_xy_marker.position = np.array([*self.fsm.com_xy, ik_target.com_pos[2]])
+            if self.fsm.goal_xy is not None:
+                goal_xy_marker.position = np.array([*self.fsm.goal_xy, ik_target.com_pos[2]])
+            if self.fsm.com_fl is not None and self.fsm.goal_fl is not None:
+                fl_plot_x[0] = self.fsm.com_fl[1]
+                fl_plot_x[1] = self.fsm.goal_fl[1]
+                fl_plot_y[0] = self.fsm.com_fl[0]
+                fl_plot_y[1] = self.fsm.goal_fl[0]
+                plt_fl.figure = create_fl_figure()
             t.append(time.time())
             d_f.append(self.d_f)
             t = t[-200:]
@@ -677,8 +686,13 @@ class Robot:
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
          
-    def deploy_controller(self):
-        
+    def deploy_controller(self, arm=False):
+        if arm:
+            arm_controller = MotorController(
+                [1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 30, 31],
+                '/dev/ttyACM1'
+            )
+            arm_controller.disable_torque()
         cfg = load_config('sundaya1_real_config_half_2dof.yaml')
         motor_manager = MotorControllerManager(
             cfg.real_config.n_motors,
@@ -689,6 +703,10 @@ class Robot:
         motor_manager.set_positions(cfg.default_qpos, 0, 30)
         
         input('start>')
+        if arm:
+            arm_controller.set_mode(0)
+            q, dq = arm_controller.receive_raw_motor_states()
+            arm_controller.send_raw_positions(q, np.zeros(q.shape), np.ones(q.shape) * 30)
         try:
             dt = 0.03
             rate_limiter = RateLimiter(frequency=1 / dt, warn=True)
@@ -699,28 +717,8 @@ class Robot:
                 print(self.fsm.cmd)
                 self.fsm.on_tick()
                 
-                com_pos_nominal = self.fsm.stance.com.position
-                theta = self.fsm.footstep_generator.ref_theta
-                fwd = np.array([np.sin(theta), np.cos(theta)])     # world XY forward
-                lat = np.array([np.cos(theta), -np.sin(theta)])    # world XY lateral/right
-                center_xy = 0.5 * (
-                    self.fsm.stance.left_foot.position[:2]
-                    + self.fsm.stance.right_foot.position[:2]
-                )
-                d_xy = com_pos_nominal[:2] - center_xy
-                d_f = d_xy @ fwd
-                d_l = d_xy @ lat
-                lateral_scale = 0.6
-                com_xy = center_xy + d_f * fwd + (lateral_scale * d_l) * lat
-                com_pos = np.array([com_xy[0], com_xy[1], com_pos_nominal[2]])
-
                 start_time = time.time()
-                self.q, success = self.ik(IKTarget(
-                    left_foot_pose=self.fsm.stance.left_foot,
-                    right_foot_pose=self.fsm.stance.right_foot,
-                    com_pos=com_pos,
-                    heading=self.fsm.footstep_generator.ref_theta
-                ))
+                self.q, success = self.ik(self._get_targets())
                 # print(f"IK solve time: {time.time() - start_time:.3f}s")
                 
                 # rate_limiter_inner = RateLimiter(frequency=1 / 0.002, warn=True)
@@ -844,6 +842,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, default='view', choices=['view', 'simulate', 'deploy', 'remote', 'controller'], help='Mode: view, simulate, deploy, remote, controller')
     parser.add_argument('--sender', action='store_true', help='Deploy via remote sender')
     parser.add_argument('--host', type=str, default='', help='Remote host')
+    parser.add_argument('--arm', action='store_true', help='Also deploy arm controller (for remote mode)')
     args = parser.parse_args()
     
     robot = Robot()
@@ -856,4 +855,4 @@ if __name__ == "__main__":
     elif args.mode == "remote":
         robot.deploy_remote(args.host, args.sender)
     elif args.mode == "controller":
-        robot.deploy_controller()
+        robot.deploy_controller(arm=args.arm)
