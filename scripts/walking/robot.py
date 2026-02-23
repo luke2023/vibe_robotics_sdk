@@ -395,7 +395,7 @@ class Robot:
         d_f = d_xy @ fwd
         d_f = np.clip(d_f, -0.002, 0.002)
         d_l = d_xy @ lat
-        lateral_scale = 0.7 if np.abs(self.cmd[0]) < 0.1 and np.abs(self.cmd[2]) > 0.1 or np.abs(self.cmd[1]) > 0.1 else 0.5
+        lateral_scale = 0.7 if np.abs(self.cmd[0]) < 0.1 and (np.abs(self.cmd[2]) > 0.1 or np.abs(self.cmd[1]) > 0.1) else 0.5
         forward_scale = 1.
         self.d_f = d_f
         com_xy = center_xy + (forward_scale * d_f) * fwd + (lateral_scale * d_l) * lat
