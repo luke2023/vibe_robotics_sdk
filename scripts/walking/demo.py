@@ -90,6 +90,7 @@ class Demo(Robot):
             sender=is_remote,
             host=host,
         )
+        input('start>')
         # leader_cfg = load_config('sundaya1_real_config_short_arm.yaml')
         # leader_motor_manager = MotorControllerManager(
         #     leader_cfg.real_config.n_motors, 

@@ -9,9 +9,13 @@ from viberobotics.exceptions.motor import *
 import numpy as np
 
 class MotorController:
-    def __init__(self, motor_ids, port_name):
+    def __init__(self, motor_ids, port_name, is_sender=False):
         self.motor_ids = np.array(motor_ids)
         self.port_name = port_name
+        self.n_motors = len(motor_ids)
+
+        if is_sender:
+            return
     
         self._init_port_handler()
         self.packetHandler = sms_sts(self.portHandler)
@@ -19,7 +23,6 @@ class MotorController:
         self.groupSyncRead_Current = GroupSyncRead(self.packetHandler, SMS_STS_PRESENT_CURRENT_L, 2)
         self.groupSyncRead_Load = GroupSyncRead(self.packetHandler, SMS_STS_PRESENT_LOAD_L, 2)
         
-        self.n_motors = len(motor_ids)
         
         self.cached_positions = np.zeros(self.n_motors)
         self.cached_speeds = np.zeros(self.n_motors)

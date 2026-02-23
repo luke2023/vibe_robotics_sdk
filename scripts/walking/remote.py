@@ -108,7 +108,7 @@ class NumpySocket:
         self._sendall(header)
         self._sendall(arr.tobytes())
 
-    def recv(self, *, min_ready: int = 10, timeout: float | None = None) -> np.ndarray:
+    def recv(self, *, min_ready: int = 1, timeout: float | None = None) -> np.ndarray:
         """
         Receiver-only: returns ONE array, but blocks until buffer has >= min_ready.
         Typical usage: recv(min_ready=10) to keep at least 10 queued before consuming.
