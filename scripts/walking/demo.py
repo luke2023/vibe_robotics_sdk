@@ -7,6 +7,7 @@ from enum import Enum
 import numpy as np
 import time
 from loop_rate_limiters import RateLimiter
+import argparse
 
 
 class JoystickButton(Enum):
@@ -78,13 +79,16 @@ class Demo(Robot):
             follower_motor_manager.set_raw_positions(full_q, 0, 30)
             time.sleep(0.03)
     
-    def run(self):
+    def run(self, is_remote, host):
         cfg = load_config('sundaya1_real_config_short.yaml')
         motor_manager = MotorControllerManager(
             cfg.real_config.n_motors, 
             cfg.real_config.motor_controllers, 
             cfg.real_config.calibration_file, 
-            mode=0
+            mode=0,
+            remote=is_remote,
+            sender=is_remote,
+            host=host,
         )
         # leader_cfg = load_config('sundaya1_real_config_short_arm.yaml')
         # leader_motor_manager = MotorControllerManager(
@@ -124,6 +128,10 @@ class Demo(Robot):
             #     pass
     
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--remote', action='store_true', help='Whether to run in remote mode')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host IP for remote mode')
+    args = parser.parse_args()
+    
     demo = Demo()
-    demo.run()
-        
+    demo.run(is_remote=args.remote, host=args.host)

@@ -3,6 +3,7 @@ from viberobotics.motor.motor_controller import MotorController
 from viberobotics.configs.config import MotorControllerConfig
 from viberobotics.utils.math import *
 from viberobotics.constants import CALIBRATION_FILE
+from viberobotics.utils.remote import NumpySocket
 
 
 import numpy as np
@@ -11,7 +12,21 @@ from pathlib import Path
 import json
 
 class MotorControllerManager:
-    def __init__(self, n_motors, motor_mapping: list[MotorControllerConfig], calibration_file=None, mode=0):
+    def __init__(self, 
+                 n_motors, 
+                 motor_mapping: list[MotorControllerConfig], 
+                 calibration_file=None, 
+                 mode=0,
+                 remote=False,
+                 sender=False,
+                 host='0.0.0.0'):
+        
+        self.is_sender = sender
+        if remote:
+            self.remote_socket = NumpySocket(host=host, port=9000, is_sender=sender)
+            if sender:
+                return
+        
         self.motor_mapping = motor_mapping
         self.controllers_mapping: dict[str, MotorController] = {}
         self.controllers: List[MotorController] = []
@@ -58,6 +73,17 @@ class MotorControllerManager:
         self.sign_change = np.ones((self.n_motors,), dtype=np.int32)
         self.sign_change[self.motor_order[self.motor_ids]] = sign_change
         
+    def send_remote_position(self, q):
+        self.remote_socket.send(q)
+    
+    def receiver_loop(self):
+        while True:
+            try:
+                q = self.remote_socket.recv()
+                self.set_raw_positions(q, 0, 50)
+            except Exception as e:
+                print(f"Error in receiver loop: {e}")
+                break
     
     def _mj_to_real(self, mj_pos):
         real_pos = np.round(mj_pos / STEP_TO_RAD + self.calibration).astype(np.int32)
@@ -135,6 +161,9 @@ class MotorControllerManager:
             q_vel = q_vel * np.ones_like(q_pos_step)
         if type(q_acc) == int or type(q_acc) == float:
             q_acc = q_acc * np.ones_like(q_pos_step)
+        if self.is_sender:
+            self.send_remote_position(q_pos_step)
+            return
         for controller in self.controllers:
             idxs = self.motor_order[controller.motor_ids]
             controller.send_raw_positions(q_pos_step[idxs], q_vel[idxs], q_acc[idxs])
