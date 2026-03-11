@@ -165,9 +165,9 @@ class Robot:
         
         
         pygame.joystick.init()
-        assert pygame.joystick.get_count() > 0
-        self.joystick = pygame.joystick.Joystick(0)
-        self.cmd = np.zeros(3)
+        if pygame.joystick.get_count() > 0:
+            self.joystick = pygame.joystick.Joystick(0)
+            self.cmd = np.zeros(3)
         
     def _init_walking(self):
         self.fsm = WalkingFSM(
@@ -549,17 +549,13 @@ class Robot:
         rate_limiter = RateLimiter(frequency=1/dt, warn=False)
         kp = 200
         kd = 10
-        self.fsm.set_cmd(WalkCommand.LEFT)
+        self.cmd = np.array([1., 0, 0])
+        self.fsm.set_cmd(self.cmd)
         with mujoco.viewer.launch_passive(model, data) as viewer:
             while True:
                 self.fsm.on_tick()
                 
-                self.q = self.ik(IKTarget(
-                    left_foot_pose=self.fsm.stance.left_foot,
-                    right_foot_pose=self.fsm.stance.right_foot,
-                    com_pos=self.fsm.stance.com.position,
-                    heading=self.fsm.footstep_generator.ref_theta
-                ))
+                self.q, _ = self.ik(self._get_targets())
                 for _ in range(int(dt / model.opt.timestep)):
                     cur_q = data.qpos[7:].copy()
                     cur_qd = data.qvel[6:].copy()

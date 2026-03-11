@@ -20,6 +20,10 @@ class JoystickButton(Enum):
     START = 7
 
 class Demo(Robot):
+    def __init__(self, enable_teleop=False):
+        super().__init__()
+        self.enable_teleop = enable_teleop
+
     def wait_for_button(self, button_id):
         while self.joystick.get_button(button_id) == 0:
             for _ in pygame.event.get():
@@ -91,13 +95,14 @@ class Demo(Robot):
             host=host,
         )
         input('start>')
-        # leader_cfg = load_config('sundaya1_real_config_short_arm.yaml')
-        # leader_motor_manager = MotorControllerManager(
-        #     leader_cfg.real_config.n_motors, 
-        #     leader_cfg.real_config.motor_controllers, 
-        #     leader_cfg.real_config.calibration_file, 
-        #     mode=0
-        # )
+        if self.enable_teleop:
+            leader_cfg = load_config('sundaya1_real_config_short_arm.yaml')
+            leader_motor_manager = MotorControllerManager(
+                leader_cfg.real_config.n_motors, 
+                leader_cfg.real_config.motor_controllers, 
+                leader_cfg.real_config.calibration_file, 
+                mode=0
+            )
         motor_manager.set_positions(cfg.default_qpos, 0, 30)
         self.wait_for_button(JoystickButton.START.value)
         print('starting')
@@ -124,15 +129,16 @@ class Demo(Robot):
                     break
                 else:
                     motor_manager.play_recording(get_asset_path('motions/stand_up_motion.json'))
-            # elif button == JoystickButton.Y:
-            #     self.teleop(leader_motor_manager, motor_manager)
-            #     pass
+            elif button == JoystickButton.Y:
+                if self.enable_teleop:
+                    self.teleop(leader_motor_manager, motor_manager)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--remote', action='store_true', help='Whether to run in remote mode')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Host IP for remote mode')
+    parser.add_argument('--teleop', action='store_true', help='Whether to run teleoperation demo')
     args = parser.parse_args()
     
-    demo = Demo()
+    demo = Demo(enable_teleop=args.teleop)
     demo.run(is_remote=args.remote, host=args.host)
