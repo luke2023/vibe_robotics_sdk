@@ -3,6 +3,7 @@ from viberobotics.motor.motor_controller import MotorController
 from viberobotics.configs.config import MotorControllerConfig
 from viberobotics.utils.math import *
 from viberobotics.constants import CALIBRATION_FILE
+from viberobotics.utils.remote import NumpySocket
 
 
 import numpy as np
@@ -11,7 +12,19 @@ from pathlib import Path
 import json
 
 class MotorControllerManager:
-    def __init__(self, n_motors, motor_mapping: list[MotorControllerConfig], calibration_file=None, mode=0):
+    def __init__(self, 
+                 n_motors, 
+                 motor_mapping: list[MotorControllerConfig], 
+                 calibration_file=None, 
+                 mode=0,
+                 remote=False,
+                 sender=False,
+                 host='0.0.0.0'):
+        
+        self.is_sender = sender
+        if remote:
+            self.remote_socket = NumpySocket(host=host, port=9000, is_sender=sender)
+        
         self.motor_mapping = motor_mapping
         self.controllers_mapping: dict[str, MotorController] = {}
         self.controllers: List[MotorController] = []
@@ -20,7 +33,7 @@ class MotorControllerManager:
         motor_order = {}
         sign_change = []
         for motor_cfg in motor_mapping:
-            controller = MotorController(motor_cfg.motor_ids, motor_cfg.serial_config.port)
+            controller = MotorController(motor_cfg.motor_ids, motor_cfg.serial_config.port, is_sender=sender)
             self.controllers_mapping[motor_cfg.name] = controller
             self.controllers.append(controller)
             self.motor_ids.extend(motor_cfg.motor_ids)
@@ -58,6 +71,17 @@ class MotorControllerManager:
         self.sign_change = np.ones((self.n_motors,), dtype=np.int32)
         self.sign_change[self.motor_order[self.motor_ids]] = sign_change
         
+    def send_remote_position(self, q):
+        self.remote_socket.send(q)
+    
+    def receiver_loop(self):
+        while True:
+            try:
+                q = self.remote_socket.recv()
+                self.set_raw_positions(q, 0, 50)
+            except Exception as e:
+                print(f"Error in receiver loop: {e}")
+                break
     
     def _mj_to_real(self, mj_pos):
         real_pos = np.round(mj_pos / STEP_TO_RAD + self.calibration).astype(np.int32)
@@ -105,6 +129,8 @@ class MotorControllerManager:
             controller.zero_motors(controller_motor_ids)
     
     def set_mode(self, mode):
+        if self.is_sender:
+            return
         print(f"Setting motor mode to {mode}")
         self.mode = mode
         for controller in self.controllers:
@@ -130,17 +156,19 @@ class MotorControllerManager:
             controller.set_kp_kd(kp, kd)
         
     def set_raw_positions(self, q_pos_step, q_vel, q_acc):
-        assert self.mode == 0, "Can only set raw positions in Position Mode"
         if type(q_vel) == int or type(q_vel) == float:
             q_vel = q_vel * np.ones_like(q_pos_step)
         if type(q_acc) == int or type(q_acc) == float:
             q_acc = q_acc * np.ones_like(q_pos_step)
+        if self.is_sender:
+            self.send_remote_position(q_pos_step)
+            return
+        assert self.mode == 0, "Can only set raw positions in Position Mode"
         for controller in self.controllers:
             idxs = self.motor_order[controller.motor_ids]
             controller.send_raw_positions(q_pos_step[idxs], q_vel[idxs], q_acc[idxs])
         
     def set_positions(self, q_pos, q_vel, q_acc):
-        assert self.mode == 0, "Can only set positions in Position Mode"
         q_pos_step = rad2step(q_pos * self.sign_change)
         
         if not isinstance(q_vel, np.ndarray):
