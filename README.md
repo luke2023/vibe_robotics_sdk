@@ -216,3 +216,29 @@ Given an `IKTarget` (desired left foot pose, right foot pose, COM position, and 
 5. Iteration stops when `||e|| < tol` or `max_iters` is reached.
 
 The COM target is post-processed in `_get_targets()` to scale the lateral COM displacement relative to the midfoot, preventing excessive lateral lean.
+
+## Citation
+
+If you use the Vibe Robotics SDK in research, please cite:
+
+```bibtex
+@software{viberobotics_sdk_2026,
+  author = {Vibe Robotics},
+  title = {Vibe Robotics SDK},
+  year = {2026},
+  publisher = {GitHub},
+  url = {https://github.com/viberobotics/viberobotics}
+}
+```
+
+## License
+
+Copyright 2026 Vibe Robotics Technologies Inc.
+
+Licensed under the Apache License, Version 2.0.
+See the [LICENSE](LICENSE) file for details.
+
+
+## Trademark
+
+Vibe Robotics and Sunday A1 are trademarks of Vibe Robotics Technologies Inc.
