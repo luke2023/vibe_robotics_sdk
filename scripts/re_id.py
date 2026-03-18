@@ -30,7 +30,7 @@ if __name__ == '__main__':
                 new_motor_ids.append(int(old_motor_id))
             else:
                 new_motor_ids.append(int(motor_id))
-        motor.sim_idxs = new_motor_ids
+        motor.motor_ids = new_motor_ids
     
     # Save the updated config back to YAML
     output_path = args.config.replace('.yaml', '_updated.yaml')
