@@ -60,8 +60,50 @@ class SundayA1Config:
     control_config: SundayA1ControlConfig
     policy_config: SundayA1PolicyConfig
     
+    def save_to_yaml(self, path):
+        def rel(abs_path, base):
+            try:
+                return Path(abs_path).relative_to(base).as_posix()
+            except ValueError:
+                return str(abs_path)
 
-def load_config(config_path, from_config_dir=True):
+        def motor_dict(motor):
+            return {
+                'name': motor.name,
+                'motor_ids': motor.motor_ids,
+                'sim_idxs': motor.sim_idxs,
+                'sign_change': motor.sign_change,
+                'serial_config': motor.serial_config.__dict__,
+            }
+
+        def list_representer(dumper, data):
+            flow = all(isinstance(x, (int, float, str, bool)) for x in data)
+            return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=flow)
+        yaml.add_representer(list, list_representer)
+
+        policy_dict = {**self.policy_config.__dict__, 'model_path': rel(self.policy_config.model_path, ASSET_DIR)}
+        sim_dict = {
+            'dt': self.sim_config.dt,
+            'asset_path': rel(self.sim_config.asset_path, ASSET_DIR),
+            'urdf_path': rel(self.sim_config.urdf_path, ASSET_DIR),
+        }
+
+        with open(path, 'w') as f:
+            yaml.dump({
+                'sim': sim_dict,
+                'real': {
+                    'imu_port': self.real_config.imu_port.__dict__,
+                    'n_motors': self.real_config.n_motors,
+                    'motor_controllers': [motor_dict(m) for m in self.real_config.motor_controllers],
+                    'calibration_file': rel(self.real_config.calibration_file, ROOT_DIR),
+                },
+                'control': self.control_config.__dict__,
+                'policy': policy_dict,
+                'default_qpos': self.default_qpos.tolist(),
+            }, f, default_flow_style=False, sort_keys=False)
+    
+
+def load_config(config_path, from_config_dir=True) -> SundayA1Config:
     config_path = CONFIG_DIR / config_path if from_config_dir else config_path
     with open(config_path, 'r') as f:
         cfg_dict = yaml.safe_load(f)
