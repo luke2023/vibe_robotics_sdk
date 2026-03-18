@@ -1,37 +1,43 @@
 sim:
   dt: 0.002
-  asset_path: "mujoco/SundayA1_short_new/scene.xml"
-  urdf_path: "urdf/SundayA1_short_new/robot.urdf"
+  asset_path: mujoco/SundayA1_short_new/scene.xml
+  urdf_path: urdf/SundayA1_short_new/robot.urdf
 real:
   imu_port:
-    port: "/dev/ttyACM2"
+    port: /dev/ttyACM2
     baudrate: 9600
   n_motors: 25
   motor_controllers:
-    - name: "arm"
-      motor_ids: [1, 2, 3, 4, 5, 30, 11, 12, 13, 14, 15, 31]
-      sim_idxs: [1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18]
-      sign_change: [-1, 1, -1, -1, 1, -1, 1, 1, 1, 1, 1, 1]
-      serial_config:
-        port: "/dev/ttyACM1"
-        baudrate: 1000000
-    - name: "leg"
-      motor_ids: [6, 7, 8, 9, 10, 22, 16, 17, 18, 19, 20, 23]
-      sim_idxs: [7, 8, 9, 10, 11, 12, 19, 20, 21, 22, 23, 24]
-      sign_change: [1, -1, -1, -1, 1, 1, 1, -1, -1, 1, 1, 1]
-      serial_config:
-        port: "/dev/ttyACM0"
-        baudrate: 1000000
-  calibration_file: "configs/zero_position.csv"
+  - name: arm
+    motor_ids: [25, 1, 2, 3, 4, 5, 30, 11, 12, 13, 14, 15, 31]
+    sim_idxs: [25, 1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18]
+    sign_change: [-1, 1, -1, -1, 1, -1, 1, 1, 1, 1, 1, 1]
+    serial_config:
+      port: /dev/ttyACM1
+      baudrate: 1000000
+  - name: leg
+    motor_ids: [6, 7, 8, 9, 10, 22, 16, 17, 18, 19, 20, 23]
+    sim_idxs: [7, 8, 9, 10, 11, 12, 19, 20, 21, 22, 23, 24]
+    sign_change: [1, -1, -1, -1, 1, 1, 1, -1, -1, 1, 1, 1]
+    serial_config:
+      port: /dev/ttyACM0
+      baudrate: 1000000
+  calibration_file: configs/zero_position.csv
 control:
   kp_torque: 20
   kd_torque: 1
+  kp_duty: 0.0
+  ki_duty: 0.0
+  voltage: 5.0
+  K_t: 0.765
+  K_e: 1.227
+  internal_resistance: 2.5
 policy:
-  model_path: "models/policy_leo.pt"
-default_qpos: [
-  0,
-  0, 0, 0, 0, 0, 0,
-  0, 0., 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0,
-  0, 0., 0, 0, 0, 0,
-]
+  model_path: models/policy_leo.pt
+  num_actions: 21
+  num_observations: 72
+  horizon: 10
+  policy_interval: 0.02
+  action_scale: 0.25
+default_qpos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
