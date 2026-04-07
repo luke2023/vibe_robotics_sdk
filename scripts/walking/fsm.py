@@ -17,6 +17,7 @@ class WalkingFSM:
         self.ssp_duration = walk_config.ssp_duration
         self.dsp_duration = walk_config.dsp_duration
         self.footsteps = footsteps
+        self.mpc_mode = getattr(walk_config, 'mpc_mode', 'decoupled')
         
         self.state: WalkState = WalkState.STAND
         
@@ -57,6 +58,42 @@ class WalkingFSM:
         self.goal_xy = None
         self.com_fl = None
         self.goal_fl = None
+        self.coupled_mpc = None
+
+    def _polygon_halfspaces(self, vertices_fl: np.ndarray):
+        """Convert a convex polygon (ordered vertices) into A @ p <= b."""
+        verts = np.asarray(vertices_fl, dtype=float)
+        center = np.mean(verts, axis=0)
+        A_poly = []
+        b_poly = []
+        n = verts.shape[0]
+        for i in range(n):
+            p0 = verts[i]
+            p1 = verts[(i + 1) % n]
+            edge = p1 - p0
+            normal = np.array([edge[1], -edge[0]], dtype=float)
+            norm = np.linalg.norm(normal)
+            if norm < 1e-9:
+                continue
+            normal /= norm
+            bound = float(normal @ p0)
+            # Flip if needed so polygon center satisfies inside inequality.
+            if float(normal @ center) > bound:
+                normal *= -1.0
+                bound *= -1.0
+            A_poly.append(normal)
+            b_poly.append(bound)
+        return np.asarray(A_poly, dtype=float), np.asarray(b_poly, dtype=float)
+
+    def _select_support_constraint(self, i, nb_init_dsp_steps, nb_init_ssp_steps, nb_dsp_steps,
+                                   A_cur, b_cur, A_next, b_next, A_loose, b_loose):
+        if i < nb_init_dsp_steps:
+            return A_loose, b_loose
+        if (i - nb_init_dsp_steps) <= nb_init_ssp_steps:
+            return A_cur, b_cur
+        if (i - nb_init_dsp_steps - nb_init_ssp_steps) < nb_dsp_steps:
+            return A_loose, b_loose
+        return A_next, b_next
     
     def set_cmd(self, cmd: np.ndarray):
         if np.linalg.norm(cmd) > 0.01:
@@ -157,6 +194,15 @@ class WalkingFSM:
         self.swing_foot.T = new_pose.T
     
     def update_mpc(self, dsp_duration, ssp_duration):
+        if self.mpc_mode == 'coupled':
+            try:
+                self.update_mpc_coupled(dsp_duration, ssp_duration)
+                return
+            except Exception as err:
+                print(f'[WARN] coupled MPC failed, fallback to decoupled: {err}')
+        self.update_mpc_decoupled(dsp_duration, ssp_duration)
+
+    def update_mpc_decoupled(self, dsp_duration, ssp_duration):
         start_time = time.time()
         nb_preview_steps = 10
 
@@ -260,10 +306,6 @@ class WalkingFSM:
         comd_fl = world_xyvel_to_fld(comd_xy)
         comdd_fl = world_xyvel_to_fld(comdd_xy)
         
-        omega = np.sqrt(9.81 / h)   # h = com height you already use
-        S_dcm = np.array([[1.0, 1.0 / omega, 0.0]])
-        
-
         # Goal: use your swing_target position but expressed in (f,l)
         # (You may later want a different goal, e.g. mid-support or capture-point ref,
         # but this keeps your structure unchanged.)
@@ -277,8 +319,6 @@ class WalkingFSM:
         
         # if np.abs(self.cmd[2]) > 0.1:
         #     fwd_adjust += 0.04
-        
-        lat_adjust = 0.02 if np.abs(self.cmd[2]) > 0.1 else 0.
         
         # print(fwd_adjust)
         # if self.cmd[2] > 0.1:
@@ -330,6 +370,141 @@ class WalkingFSM:
         self.l_mpc.solve()
         self.preview_time = 0.0
         # print('MPC solve time: {:.3f}s'.format(time.time() - start_time))
+
+    def update_mpc_coupled(self, dsp_duration, ssp_duration):
+        nb_preview_steps = 10
+        T = self.mpc_interval
+        nb_init_dsp_steps = int(round(dsp_duration / T))
+        nb_init_ssp_steps = int(round(ssp_duration / T))
+        nb_dsp_steps = int(round(self.dsp_duration / T))
+
+        A_1d = np.array([
+            [1., T, T**2 / 2.],
+            [0., 1., T],
+            [0., 0., 1.]
+        ])
+        B_1d = np.array([
+            [T**3 / 6.],
+            [T**2 / 2.],
+            [T]
+        ])
+
+        # State: [f, fd, fdd, l, ld, ldd], control: [jf, jl]
+        A_2d = np.block([
+            [A_1d, np.zeros((3, 3))],
+            [np.zeros((3, 3)), A_1d],
+        ])
+        B_2d = np.block([
+            [B_1d, np.zeros((3, 1))],
+            [np.zeros((3, 1)), B_1d],
+        ])
+
+        theta = self.footstep_generator.ref_theta
+        c, s = np.cos(theta), np.sin(theta)
+        fwd = np.array([s, c])
+        right = np.array([c, -s])
+
+        def world_xy_to_fl(xy):
+            xy = np.asarray(xy, dtype=float)
+            return np.array([xy @ fwd, xy @ right], dtype=float)
+
+        def world_xyvel_to_fld(vel_xy):
+            vel_xy = np.asarray(vel_xy, dtype=float)
+            return np.array([vel_xy @ fwd, vel_xy @ right], dtype=float)
+
+        self._fl_to_world = np.stack([fwd, right], axis=1)
+
+        h = float(self.stance.com.position[2])
+        g = 9.81
+
+        # zmp = [f - h/g * fdd, l - h/g * ldd]
+        C_zmp = np.array([
+            [1., 0., -h / g, 0., 0., 0.],
+            [0., 0., 0., 1., 0., -h / g]
+        ])
+
+        cur_vertices_w = self.stance_foot.get_scaled_contact_area(0.8)
+        next_vertices_w = self.swing_foot.get_scaled_contact_area(0.8)
+        cur_vertices_fl = np.array([world_xy_to_fl(v[:2]) for v in cur_vertices_w])
+        next_vertices_fl = np.array([world_xy_to_fl(v[:2]) for v in next_vertices_w])
+
+        A_cur, b_cur = self._polygon_halfspaces(cur_vertices_fl)
+        A_next, b_next = self._polygon_halfspaces(next_vertices_fl)
+
+        # Loose box during DSP transition periods.
+        A_loose = np.array([
+            [1., 0.],
+            [-1., 0.],
+            [0., 1.],
+            [0., -1.],
+        ])
+        b_loose = np.array([1000., 1000., 1000., 1000.])
+
+        C_list = []
+        e_list = []
+        for i in range(nb_preview_steps):
+            A_poly, b_poly = self._select_support_constraint(
+                i,
+                nb_init_dsp_steps,
+                nb_init_ssp_steps,
+                nb_dsp_steps,
+                A_cur,
+                b_cur,
+                A_next,
+                b_next,
+                A_loose,
+                b_loose,
+            )
+            C_list.append(A_poly @ C_zmp)
+            e_list.append(b_poly)
+
+        com_xy = self.stance.com.position[:2]
+        comd_xy = self.stance.com.velocity[:2]
+        comdd_xy = self.stance.com.acceleration[:2]
+        com_fl = world_xy_to_fl(com_xy)
+        comd_fl = world_xyvel_to_fld(comd_xy)
+        comdd_fl = world_xyvel_to_fld(comdd_xy)
+
+        mid_xy = 0.5 * (self.stance_foot.position[:2] + self.swing_foot.position[:2])
+        goal_fl = world_xy_to_fl(mid_xy)
+
+        fwd_adjust = 0.06 if np.abs(self.cmd[0]) > 0.1 else 0.005
+        fwd_adjust *= np.sign(self.cmd[0]) * 0.7
+        fwd_adjust *= 2
+
+        self.com_xy = self._fl_to_world @ com_fl
+        self.goal_xy = self._fl_to_world @ goal_fl
+        self.com_fl = com_fl.copy()
+        self.goal_fl = goal_fl.copy()
+
+        self.coupled_mpc = LinearPredictiveControl(
+            A_2d,
+            B_2d,
+            C_list,
+            None,
+            e_list,
+            x_init=np.array([
+                com_fl[0],
+                comd_fl[0],
+                comdd_fl[0],
+                com_fl[1],
+                comd_fl[1],
+                comdd_fl[1],
+            ]),
+            x_goal=np.array([
+                goal_fl[0] + fwd_adjust,
+                0.,
+                0.,
+                goal_fl[1],
+                0.,
+                0.,
+            ]),
+            nb_steps=nb_preview_steps,
+            wxt=1.5,
+            wu=0.01,
+        )
+        self.coupled_mpc.solve()
+        self.preview_time = 0.0
         
     def update_mpc_old(self, dsp_duration, ssp_duration):
         nb_preview_steps = 20
@@ -412,7 +587,10 @@ class WalkingFSM:
                 self.update_mpc(self.rem_time, self.ssp_duration)
             elif self.state == WalkState.SSP:
                 self.update_mpc(0., self.rem_time)
-        j_fl = np.array([self.f_mpc.U[0, 0], self.l_mpc.U[0, 0]])   # [j_f, j_l]
+        if self.mpc_mode == 'coupled' and self.coupled_mpc is not None and self.coupled_mpc.U is not None:
+            j_fl = self.coupled_mpc.U[0].copy()
+        else:
+            j_fl = np.array([self.f_mpc.U[0, 0], self.l_mpc.U[0, 0]])
         j_xy = self._fl_to_world @ j_fl                              # 2x2 @ 2
         com_jerk = np.array([j_xy[0], j_xy[1], 0.0])
         self.stance.com.integrate_constant_jerk(com_jerk, self.dt)

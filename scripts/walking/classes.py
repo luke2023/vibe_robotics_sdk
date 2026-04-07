@@ -43,6 +43,7 @@ class WalkConfig:
     ssp_duration: float
     dsp_duration: float
     step_length: float
+    mpc_mode: str = "coupled"
     
 @dataclass
 class RobotParams:

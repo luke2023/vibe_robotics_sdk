@@ -143,6 +143,7 @@ class Robot:
             ssp_duration=0.7,
             dsp_duration=0.07,
             step_length=0.03,
+            mpc_mode='decoupled',
         )
         
         self.robot = pin.RobotWrapper.BuildFromMJCF(filename=self.config.xml_path, root_joint=None)
